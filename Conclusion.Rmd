@@ -1,0 +1,16 @@
+---
+title: "Conclusion"
+author: "Aditya Khan"
+output: 
+    html_document:
+        toc: TRUE
+        toc_float: TRUE
+---
+
+# Conclusion and Limitations
+
+The conclusion that we arrive at, is that although neighbourhoods do have a significant impact on the price (from the ANOVA model), it is questionable how much of an impact that income and crime levels of a neighbourhood have on price. This is not only seen in the visualisations, where any association appears to be weak, but also in the variable importance plots, where these covariates appear to have a weak impact on predicting price. On the other hand, proximity to downtown does matter. So we can say that the closer a neighbourhood is to downtown, the higher we would expect the prices to be. This is corroborated by the leaflet map displaying the results of the post-hoc Tukey test, showing that the "most different" neighbourhoods to others in price, happened to be closer to downtown in general.
+
+There are some limitations to our work though. For instance, we were only able to consider a limited subset of neighbourhood characteristics that could potentially have an impact on the price of a listing. For instance, one could think that walkability of a neighbourhood might be important to price - this was a word that showed up a lot in the neighbourhood description text wordclouds we constructed. We unfortunately did not have the data for this. 
+
+There are further limitations to our analysis. For instance, the median household income comes from the 2021 census (which is the most recent time we can find the relevant data), and yet the rest of our data is from 2023-24. This is an unavoidable issue with the scope of our project.

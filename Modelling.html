@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+<meta name="author" content="Aditya Khan" />
+
+
+<title>Modelling</title>
+
+<script src="site_libs/header-attrs-2.25/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/cosmo.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.13.2/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+<script src="site_libs/htmlwidgets-1.6.4/htmlwidgets.js"></script>
+<link href="site_libs/leaflet-1.3.1/leaflet.css" rel="stylesheet" />
+<script src="site_libs/leaflet-1.3.1/leaflet.js"></script>
+<link href="site_libs/leafletfix-1.0.0/leafletfix.css" rel="stylesheet" />
+<script src="site_libs/proj4-2.6.2/proj4.min.js"></script>
+<script src="site_libs/Proj4Leaflet-1.0.1/proj4leaflet.js"></script>
+<link href="site_libs/rstudio_leaflet-1.3.1/rstudio_leaflet.css" rel="stylesheet" />
+<script src="site_libs/leaflet-binding-2.2.1/leaflet.js"></script>
+<script src="site_libs/plotly-binding-4.10.4/plotly.js"></script>
+<script src="site_libs/typedarray-0.1/typedarray.min.js"></script>
+<link href="site_libs/crosstalk-1.2.1/css/crosstalk.min.css" rel="stylesheet" />
+<script src="site_libs/crosstalk-1.2.1/js/crosstalk.min.js"></script>
+<link href="site_libs/plotly-htmlwidgets-css-2.11.1/plotly-htmlwidgets.css" rel="stylesheet" />
+<script src="site_libs/plotly-main-2.11.1/plotly-latest.min.js"></script>
+<script src="site_libs/kePrint-0.0.1/kePrint.js"></script>
+<link href="site_libs/lightable-0.0.1/lightable.css" rel="stylesheet" />
+<link href="site_libs/font-awesome-6.4.2/css/all.min.css" rel="stylesheet" />
+<link href="site_libs/font-awesome-6.4.2/css/v4-shims.min.css" rel="stylesheet" />
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+details > summary > p:only-child {
+  display: inline;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark the anchor link active (and if it's in a dropdown, also mark that active)
+  var dropdown = menuAnchor.closest('li.dropdown');
+  if (window.bootstrap) { // Bootstrap 4+
+    menuAnchor.addClass('active');
+    dropdown.find('> .dropdown-toggle').addClass('active');
+  } else { // Bootstrap 3
+    menuAnchor.parent().addClass('active');
+    dropdown.addClass('active');
+  }
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before, .tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "\e259";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "\e258";
+  font-family: 'Glyphicons Halflings';
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-bs-toggle="collapse" data-target="#navbar" data-bs-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">JSC370 Final Project</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="index.html">Home</a>
+</li>
+<li>
+  <a href="Exploratory-Visualisations.html">Methods and Exploratory Visualisations</a>
+</li>
+<li>
+  <a href="Modelling.html">Modelling</a>
+</li>
+<li>
+  <a href="Conclusion.html">Conclusion</a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        <li>
+  <a href="https://github.com/JSC370/JSC370-2024/">
+    <span class="fa fa-github fa-lg"></span>
+     
+  </a>
+</li>
+<li>
+  <a href="https://jsc370.github.io/JSC370-2024/">JSC370 Home</a>
+</li>
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Modelling</h1>
+<h4 class="author">Aditya Khan</h4>
+
+</div>
+
+
+<p><strong>Important Note:</strong> On this page, we briefly summarise
+the modelling process that we went through. We ommitted many details for
+brevity.</p>
+<div id="mean-model-non-predictive-purposes" class="section level1">
+<h1>Mean Model (Non-Predictive Purposes)</h1>
+<p>The first model that we fit was a mean model, with price as the
+response, and neighbourhood as the “treatment”. We found that at least
+one neighbourhood had a signficantly different mean price than the
+others.</p>
+<p>Beyond confirming this, we futher conducted a post-hoc Tukey HSD
+test. From this, we found that only about 6% of the pairwise
+neighbourhood comparisons in the test were significant. We count the
+number of times a given neighbourhood was involved in a significant
+comparison. This gives a rough measure of how different a given
+neighbourhood is, compared to any other neighbourhood in Toronto.</p>
+<div class="leaflet html-widget html-fill-item" id="htmlwidget-162d896cf936cb040b58" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-162d896cf936cb040b58">{"x":{"options":{"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addTiles","args":["https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",null,null,{"minZoom":0,"maxZoom":18,"tileSize":256,"subdomains":"abc","errorTileUrl":"","tms":false,"noWrap":false,"zoomOffset":0,"zoomReverse":false,"opacity":1,"zIndex":1,"detectRetina":false,"attribution":"&copy; <a href=\"https://openstreetmap.org/copyright/\">OpenStreetMap<\/a>,  <a href=\"https://opendatacommons.org/licenses/odbl/\">ODbL<\/a>"}]},{"method":"addCircleMarkers","args":[[43.81089817336547,43.78958575340322,43.60594312257849,43.67106581765837,43.73834050969148,43.7605978869489,43.77274023506874,43.7986466440933,43.72341064451727,43.69498559713686,43.6973154797662,43.76630674447284,43.67537578119752,43.6985949998681,43.72310154423641,43.68885898251061,43.70102628839376,43.68794510318071,43.67964867354269,43.78029773515158,43.70921749577498,43.74149686968581,43.72380111476961,43.67815930360162,43.68433530429932,43.78334518164862,43.75572895369552,43.65563100166727,43.66253526399473,43.74176195694294,43.71808122793987,43.72189025986163,43.65791893643122,43.64365892594982,43.71699728373473,43.70382746753571,43.69181673233648,43.74568848453939,43.67206524415857,43.74963590600536,43.773078269818,43.6466430863124,43.65803563213647,43.78964975296714,43.8041495464399,43.69263314136018,43.75568912033845,43.74493548249278,43.68706445289874,43.73359045458016,43.66735904141453,43.68689735231249,43.72648085731081,43.65341715180924,43.69692423480202,43.65353904059639,43.65681303892452,43.75906326281829,43.7291064490644,43.71689896044334,43.70863439826606,43.64673413020721,43.59294129057054,43.71644553371764,43.63595499065876,43.82233892063121,43.77784010527508,43.65649033587395,43.68938039997987,43.75050795634802,43.70860498134522,43.60100364417985,43.79063499738429,43.78650123044517,43.67190822433871,43.69551056329369,43.68804168899482,43.69523931876613,43.65875085738919,43.72031036348111,43.68041306539128,43.78710924428485,43.66155274933342,43.65899545066289,43.72093352445397,43.67549618378351,43.64473688530079,43.67713412516329,43.65852091166688,43.70998689344824,43.7384999426947,43.63792120219969,43.66376291749624,43.75548187066057,43.81530244707739,43.63398105576675,43.78133601586882,43.67140362832505,43.73733833723934,43.7074838099611,43.65058446090984,43.66123268289042,43.72944177196103,43.76767197941454,43.73057483728453,43.7797726520897,43.70155493685659,43.74648655301324,43.77280810877927,43.68350084042239,43.69240593380127,43.67636314424259,43.67672688541793,43.7055069522292,43.76281237274368,43.71421759690493],[-79.27467934396481,-79.27191472108268,-79.54229845501105,-79.40011341129666,-79.34934078626536,-79.45596038717238,-79.37807718063338,-79.38148024834743,-79.4250951276975,-79.47523680385208,-79.26356075992805,-79.51898887208233,-79.33921712511622,-79.44865200119354,-79.38433554363311,-79.35203125218642,-79.48586962485133,-79.45534233398585,-79.41105044758675,-79.14737197694456,-79.28120143522663,-79.44634499479112,-79.23701995364438,-79.4459252896238,-79.32862731718336,-79.35628731759877,-79.28073669839212,-79.43720289301547,-79.52532909479802,-79.24584900172326,-79.54749462599155,-79.43933113747893,-79.57463168948145,-79.56721876710742,-79.3321663381911,-79.42879786694513,-79.41593575866186,-79.51190798400388,-79.32340891447744,-79.1947888422656,-79.34108818690878,-79.46183583324886,-79.46562130814532,-79.17575890153724,-79.35891668345322,-79.52344396766871,-79.56948247293667,-79.55176283455788,-79.42616540841374,-79.27333522791425,-79.47293736322955,-79.46779080768071,-79.25883767386331,-79.39946349606581,-79.55092201336181,-79.51214784525521,-79.49400712444746,-79.41744301309872,-79.40327778972708,-79.40469765308768,-79.36745659465153,-79.42840614344888,-79.53388845854303,-79.48144677210745,-79.57191008730939,-79.28142071632902,-79.20952133643381,-79.36917389747178,-79.49818220717393,-79.58734362948822,-79.38595581003659,-79.50658496722434,-79.40764835966566,-79.43052993271627,-79.34925266676265,-79.28011062771462,-79.43961741312896,-79.3360347292724,-79.41763128824294,-79.53048662464516,-79.35240078783333,-79.33450518562124,-79.54042181248184,-79.36089430351001,-79.56695516938566,-79.49344023897424,-79.4413709515201,-79.38230907692429,-79.48444282778622,-79.49781217132235,-79.21536458229126,-79.4328699998581,-79.33924366130654,-79.38419811904114,-79.32100594447508,-79.50212409974263,-79.30071381656252,-79.29823288735165,-79.56393449904779,-79.34880279587888,-79.41372820959225,-79.40573652633039,-79.31258884888781,-79.18384101890234,-79.59509938938234,-79.45359102884817,-79.51443109631973,-79.30129928091603,-79.42404386725946,-79.55899444301944,-79.30996756072783,-79.31486684492285,-79.42690491133531,-79.40260593617766,-79.49823558996871,-79.45417294739426],8,null,null,{"interactive":true,"className":"","stroke":true,"color":["#82BADB","#78B5D9","#9ECAE1","#2876B8","#9AC7E0","#90C2DE","#95C5DF","#9ECAE1","#90C2DE","#9ECAE1","#95C5DF","#73B2D8","#9ECAE1","#73B2D8","#95C5DF","#9ECAE1","#8CBFDD","#8CBFDD","#3D8CC3","#9ECAE1","#78B5D9","#90C2DE","#95C5DF","#82BADB","#87BDDC","#509ACB","#9AC7E0","#90C2DE","#78B5D9","#7DB7DA","#9ECAE1","#8CBFDD","#9ECAE1","#90C2DE","#9AC7E0","#9ECAE1","#08306B","#62A8D2","#82BADB","#9ECAE1","#9ECAE1","#95C5DF","#9AC7E0","#8CBFDD","#62A8D2","#9ECAE1","#9ECAE1","#8CBFDD","#9AC7E0","#78B5D9","#95C5DF","#82BADB","#9ECAE1","#78B5D9","#9ECAE1","#9ECAE1","#9ECAE1","#9AC7E0","#7DB7DA","#6AADD5","#1B67AD","#7DB7DA","#9AC7E0","#9ECAE1","#95C5DF","#6EB0D7","#9AC7E0","#2F7DBB","#8CBFDD","#9ECAE1","#90C2DE","#5BA2CF","#4B98C9","#62A8D2","#95C5DF","#78B5D9","#8CBFDD","#95C5DF","#7DB7DA","#9ECAE1","#9ECAE1","#5FA5D1","#9ECAE1","#9AC7E0","#95C5DF","#78B5D9","#6AADD5","#62A8D2","#9ECAE1","#9ECAE1","#73B2D8","#87BDDC","#084C94","#9AC7E0","#3B89C2","#95C5DF","#6EB0D7","#08336F","#82BADB","#9ECAE1","#3D8CC3","#8CBFDD","#9ECAE1","#4B98C9","#57A0CE","#9ECAE1","#9ECAE1","#78B5D9","#8CBFDD","#66AAD4","#95C5DF","#9AC7E0","#9AC7E0","#9AC7E0","#155EA6","#90C2DE"],"weight":5,"opacity":0.5,"fill":true,"fillColor":["#82BADB","#78B5D9","#9ECAE1","#2876B8","#9AC7E0","#90C2DE","#95C5DF","#9ECAE1","#90C2DE","#9ECAE1","#95C5DF","#73B2D8","#9ECAE1","#73B2D8","#95C5DF","#9ECAE1","#8CBFDD","#8CBFDD","#3D8CC3","#9ECAE1","#78B5D9","#90C2DE","#95C5DF","#82BADB","#87BDDC","#509ACB","#9AC7E0","#90C2DE","#78B5D9","#7DB7DA","#9ECAE1","#8CBFDD","#9ECAE1","#90C2DE","#9AC7E0","#9ECAE1","#08306B","#62A8D2","#82BADB","#9ECAE1","#9ECAE1","#95C5DF","#9AC7E0","#8CBFDD","#62A8D2","#9ECAE1","#9ECAE1","#8CBFDD","#9AC7E0","#78B5D9","#95C5DF","#82BADB","#9ECAE1","#78B5D9","#9ECAE1","#9ECAE1","#9ECAE1","#9AC7E0","#7DB7DA","#6AADD5","#1B67AD","#7DB7DA","#9AC7E0","#9ECAE1","#95C5DF","#6EB0D7","#9AC7E0","#2F7DBB","#8CBFDD","#9ECAE1","#90C2DE","#5BA2CF","#4B98C9","#62A8D2","#95C5DF","#78B5D9","#8CBFDD","#95C5DF","#7DB7DA","#9ECAE1","#9ECAE1","#5FA5D1","#9ECAE1","#9AC7E0","#95C5DF","#78B5D9","#6AADD5","#62A8D2","#9ECAE1","#9ECAE1","#73B2D8","#87BDDC","#084C94","#9AC7E0","#3B89C2","#95C5DF","#6EB0D7","#08336F","#82BADB","#9ECAE1","#3D8CC3","#8CBFDD","#9ECAE1","#4B98C9","#57A0CE","#9ECAE1","#9ECAE1","#78B5D9","#8CBFDD","#66AAD4","#95C5DF","#9AC7E0","#9AC7E0","#9AC7E0","#155EA6","#90C2DE"],"fillOpacity":1},null,null,["Agincourt North","Agincourt South-Malvern West","Alderwood","Annex","Banbury-Don Mills","Bathurst Manor","Bayview Village","Bayview Woods-Steeles","Bedford Park-Nortown","Beechborough-Greenbrook","Birchcliffe-Cliffside","Black Creek","Blake-Jones","Briar Hill-Belgravia","Bridle Path-Sunnybrook-York Mills","Broadview North","Brookhaven-Amesbury","Caledonia-Fairbank","Casa Loma","Centennial Scarborough","Clairlea-Birchmount","Clanton Park","Cliffcrest","Corso Italia-Davenport","Danforth","Don Valley Village","Dorset Park","Dufferin Grove","Edenbridge-Humber Valley","Eglinton East","Elms-Old Rexdale","Englemount-Lawrence","Eringate-Centennial-West Deane","Etobicoke West Mall","Flemingdon Park","Forest Hill North","Forest Hill South","Glenfield-Jane Heights","Greenwood-Coxwell","Guildwood","Henry Farm","High Park-Swansea","High Park North","Highland Creek","Hillcrest Village","Humber Heights-Westmount","Humber Summit","Humbermede","Humewood-Cedarvale","Ionview","Junction Area","Keelesdale-Eglinton West","Kennedy Park","Kensington-Chinatown","Kingsview Village-The Westway","Kingsway South","Lambton Baby Point","Lansing-Westgate","Lawrence Park North","Lawrence Park South","Leaside-Bennington","Little Portugal","Long Branch","Maple Leaf","Markland Wood","Milliken","Morningside","Moss Park","Mount Dennis","Mount Olive-Silverstone-Jamestown","Mount Pleasant East","New Toronto","Newtonbrook East","Newtonbrook West","North Riverdale","Oakridge","Oakwood Village","Old East York","Palmerston-Little Italy","Pelmo Park-Humberlea","Playter Estates-Danforth","Pleasant View","Princess-Rosethorn","Regent Park","Rexdale-Kipling","Rockcliffe-Smythe","Roncesvalles","Rosedale-Moore Park","Runnymede-Bloor West Village","Rustic","Scarborough Village","South Parkdale","South Riverdale","St.Andrew-Windfields","Steeles","Stonegate-Queensway","Tam O'Shanter-Sullivan","The Beaches","Thistletown-Beaumond Heights","Thorncliffe Park","Trinity-Bellwoods","University","Victoria Village","West Hill","West Humber-Clairville","Westminster-Branson","Weston","Wexford/Maryvale","Willowdale West","Willowridge-Martingrove-Richview","Woodbine-Lumsden","Woodbine Corridor","Wychwood","Yonge-Eglinton","York University Heights","Yorkdale-Glen Park"],null,["Neighborhood:  Agincourt North","Neighborhood:  Agincourt South-Malvern West","Neighborhood:  Alderwood","Neighborhood:  Annex","Neighborhood:  Banbury-Don Mills","Neighborhood:  Bathurst Manor","Neighborhood:  Bayview Village","Neighborhood:  Bayview Woods-Steeles","Neighborhood:  Bedford Park-Nortown","Neighborhood:  Beechborough-Greenbrook","Neighborhood:  Birchcliffe-Cliffside","Neighborhood:  Black Creek","Neighborhood:  Blake-Jones","Neighborhood:  Briar Hill-Belgravia","Neighborhood:  Bridle Path-Sunnybrook-York Mills","Neighborhood:  Broadview North","Neighborhood:  Brookhaven-Amesbury","Neighborhood:  Caledonia-Fairbank","Neighborhood:  Casa Loma","Neighborhood:  Centennial Scarborough","Neighborhood:  Clairlea-Birchmount","Neighborhood:  Clanton Park","Neighborhood:  Cliffcrest","Neighborhood:  Corso Italia-Davenport","Neighborhood:  Danforth","Neighborhood:  Don Valley Village","Neighborhood:  Dorset Park","Neighborhood:  Dufferin Grove","Neighborhood:  Edenbridge-Humber Valley","Neighborhood:  Eglinton East","Neighborhood:  Elms-Old Rexdale","Neighborhood:  Englemount-Lawrence","Neighborhood:  Eringate-Centennial-West Deane","Neighborhood:  Etobicoke West Mall","Neighborhood:  Flemingdon Park","Neighborhood:  Forest Hill North","Neighborhood:  Forest Hill South","Neighborhood:  Glenfield-Jane Heights","Neighborhood:  Greenwood-Coxwell","Neighborhood:  Guildwood","Neighborhood:  Henry Farm","Neighborhood:  High Park-Swansea","Neighborhood:  High Park North","Neighborhood:  Highland Creek","Neighborhood:  Hillcrest Village","Neighborhood:  Humber Heights-Westmount","Neighborhood:  Humber Summit","Neighborhood:  Humbermede","Neighborhood:  Humewood-Cedarvale","Neighborhood:  Ionview","Neighborhood:  Junction Area","Neighborhood:  Keelesdale-Eglinton West","Neighborhood:  Kennedy Park","Neighborhood:  Kensington-Chinatown","Neighborhood:  Kingsview Village-The Westway","Neighborhood:  Kingsway South","Neighborhood:  Lambton Baby Point","Neighborhood:  Lansing-Westgate","Neighborhood:  Lawrence Park North","Neighborhood:  Lawrence Park South","Neighborhood:  Leaside-Bennington","Neighborhood:  Little Portugal","Neighborhood:  Long Branch","Neighborhood:  Maple Leaf","Neighborhood:  Markland Wood","Neighborhood:  Milliken","Neighborhood:  Morningside","Neighborhood:  Moss Park","Neighborhood:  Mount Dennis","Neighborhood:  Mount Olive-Silverstone-Jamestown","Neighborhood:  Mount Pleasant East","Neighborhood:  New Toronto","Neighborhood:  Newtonbrook East","Neighborhood:  Newtonbrook West","Neighborhood:  North Riverdale","Neighborhood:  Oakridge","Neighborhood:  Oakwood Village","Neighborhood:  Old East York","Neighborhood:  Palmerston-Little Italy","Neighborhood:  Pelmo Park-Humberlea","Neighborhood:  Playter Estates-Danforth","Neighborhood:  Pleasant View","Neighborhood:  Princess-Rosethorn","Neighborhood:  Regent Park","Neighborhood:  Rexdale-Kipling","Neighborhood:  Rockcliffe-Smythe","Neighborhood:  Roncesvalles","Neighborhood:  Rosedale-Moore Park","Neighborhood:  Runnymede-Bloor West Village","Neighborhood:  Rustic","Neighborhood:  Scarborough Village","Neighborhood:  South Parkdale","Neighborhood:  South Riverdale","Neighborhood:  St.Andrew-Windfields","Neighborhood:  Steeles","Neighborhood:  Stonegate-Queensway","Neighborhood:  Tam O'Shanter-Sullivan","Neighborhood:  The Beaches","Neighborhood:  Thistletown-Beaumond Heights","Neighborhood:  Thorncliffe Park","Neighborhood:  Trinity-Bellwoods","Neighborhood:  University","Neighborhood:  Victoria Village","Neighborhood:  West Hill","Neighborhood:  West Humber-Clairville","Neighborhood:  Westminster-Branson","Neighborhood:  Weston","Neighborhood:  Wexford/Maryvale","Neighborhood:  Willowdale West","Neighborhood:  Willowridge-Martingrove-Richview","Neighborhood:  Woodbine-Lumsden","Neighborhood:  Woodbine Corridor","Neighborhood:  Wychwood","Neighborhood:  Yonge-Eglinton","Neighborhood:  York University Heights","Neighborhood:  Yorkdale-Glen Park"],{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]},{"method":"addMarkers","args":[[43.81089817336547,43.78958575340322,43.60594312257849,43.67106581765837,43.73834050969148,43.7605978869489,43.77274023506874,43.7986466440933,43.72341064451727,43.69498559713686,43.6973154797662,43.76630674447284,43.67537578119752,43.6985949998681,43.72310154423641,43.68885898251061,43.70102628839376,43.68794510318071,43.67964867354269,43.78029773515158,43.70921749577498,43.74149686968581,43.72380111476961,43.67815930360162,43.68433530429932,43.78334518164862,43.75572895369552,43.65563100166727,43.66253526399473,43.74176195694294,43.71808122793987,43.72189025986163,43.65791893643122,43.64365892594982,43.71699728373473,43.70382746753571,43.69181673233648,43.74568848453939,43.67206524415857,43.74963590600536,43.773078269818,43.6466430863124,43.65803563213647,43.78964975296714,43.8041495464399,43.69263314136018,43.75568912033845,43.74493548249278,43.68706445289874,43.73359045458016,43.66735904141453,43.68689735231249,43.72648085731081,43.65341715180924,43.69692423480202,43.65353904059639,43.65681303892452,43.75906326281829,43.7291064490644,43.71689896044334,43.70863439826606,43.64673413020721,43.59294129057054,43.71644553371764,43.63595499065876,43.82233892063121,43.77784010527508,43.65649033587395,43.68938039997987,43.75050795634802,43.70860498134522,43.60100364417985,43.79063499738429,43.78650123044517,43.67190822433871,43.69551056329369,43.68804168899482,43.69523931876613,43.65875085738919,43.72031036348111,43.68041306539128,43.78710924428485,43.66155274933342,43.65899545066289,43.72093352445397,43.67549618378351,43.64473688530079,43.67713412516329,43.65852091166688,43.70998689344824,43.7384999426947,43.63792120219969,43.66376291749624,43.75548187066057,43.81530244707739,43.63398105576675,43.78133601586882,43.67140362832505,43.73733833723934,43.7074838099611,43.65058446090984,43.66123268289042,43.72944177196103,43.76767197941454,43.73057483728453,43.7797726520897,43.70155493685659,43.74648655301324,43.77280810877927,43.68350084042239,43.69240593380127,43.67636314424259,43.67672688541793,43.7055069522292,43.76281237274368,43.71421759690493],[-79.27467934396481,-79.27191472108268,-79.54229845501105,-79.40011341129666,-79.34934078626536,-79.45596038717238,-79.37807718063338,-79.38148024834743,-79.4250951276975,-79.47523680385208,-79.26356075992805,-79.51898887208233,-79.33921712511622,-79.44865200119354,-79.38433554363311,-79.35203125218642,-79.48586962485133,-79.45534233398585,-79.41105044758675,-79.14737197694456,-79.28120143522663,-79.44634499479112,-79.23701995364438,-79.4459252896238,-79.32862731718336,-79.35628731759877,-79.28073669839212,-79.43720289301547,-79.52532909479802,-79.24584900172326,-79.54749462599155,-79.43933113747893,-79.57463168948145,-79.56721876710742,-79.3321663381911,-79.42879786694513,-79.41593575866186,-79.51190798400388,-79.32340891447744,-79.1947888422656,-79.34108818690878,-79.46183583324886,-79.46562130814532,-79.17575890153724,-79.35891668345322,-79.52344396766871,-79.56948247293667,-79.55176283455788,-79.42616540841374,-79.27333522791425,-79.47293736322955,-79.46779080768071,-79.25883767386331,-79.39946349606581,-79.55092201336181,-79.51214784525521,-79.49400712444746,-79.41744301309872,-79.40327778972708,-79.40469765308768,-79.36745659465153,-79.42840614344888,-79.53388845854303,-79.48144677210745,-79.57191008730939,-79.28142071632902,-79.20952133643381,-79.36917389747178,-79.49818220717393,-79.58734362948822,-79.38595581003659,-79.50658496722434,-79.40764835966566,-79.43052993271627,-79.34925266676265,-79.28011062771462,-79.43961741312896,-79.3360347292724,-79.41763128824294,-79.53048662464516,-79.35240078783333,-79.33450518562124,-79.54042181248184,-79.36089430351001,-79.56695516938566,-79.49344023897424,-79.4413709515201,-79.38230907692429,-79.48444282778622,-79.49781217132235,-79.21536458229126,-79.4328699998581,-79.33924366130654,-79.38419811904114,-79.32100594447508,-79.50212409974263,-79.30071381656252,-79.29823288735165,-79.56393449904779,-79.34880279587888,-79.41372820959225,-79.40573652633039,-79.31258884888781,-79.18384101890234,-79.59509938938234,-79.45359102884817,-79.51443109631973,-79.30129928091603,-79.42404386725946,-79.55899444301944,-79.30996756072783,-79.31486684492285,-79.42690491133531,-79.40260593617766,-79.49823558996871,-79.45417294739426],{"iconUrl":{"data":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP6zwAAAgcBApocMXEAAAAASUVORK5CYII=","index":0},"iconWidth":1,"iconHeight":1},null,null,{"interactive":true,"draggable":false,"keyboard":true,"title":"","alt":"","zIndexOffset":0,"opacity":1,"riseOnHover":false,"riseOffset":250},null,null,null,null,["6","8","0","30","1","3","2","0","3","0","2","9","0","9","2","0","4","4","23","0","8","3","2","6","5","18","1","3","8","7","0","4","0","3","1","0","53","13","6","0","0","2","1","4","13","0","0","4","1","8","2","6","0","8","0","0","0","1","7","11","35","7","1","0","2","10","1","28","4","0","3","15","19","13","2","8","4","2","7","0","0","14","0","1","2","8","11","13","0","0","9","5","44","1","24","2","10","52","6","0","23","4","0","19","16","0","0","8","4","12","2","1","1","1","38","3"],{"interactive":false,"permanent":true,"direction":"center","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":true,"style":{"color":"white"},"className":"","sticky":true},null]},{"method":"addCircleMarkers","args":[43.6515,-79.3835,8,null,null,{"interactive":true,"className":"","stroke":true,"color":"Purple","weight":5,"opacity":0.5,"fill":true,"fillColor":"Purple","fillOpacity":1},null,null,"DT",null,"DT",{"interactive":false,"permanent":false,"direction":"auto","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":false,"className":"","sticky":true},null]},{"method":"addMarkers","args":[43.6515,-79.3835,{"iconUrl":{"data":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP6zwAAAgcBApocMXEAAAAASUVORK5CYII=","index":0},"iconWidth":1,"iconHeight":1},null,null,{"interactive":true,"draggable":false,"keyboard":true,"title":"","alt":"","zIndexOffset":0,"opacity":1,"riseOnHover":false,"riseOffset":250},null,null,null,null,"DT",{"interactive":false,"permanent":true,"direction":"center","opacity":1,"offset":[0,0],"textsize":"10px","textOnly":true,"style":{"color":"white"},"className":"","sticky":true},null]},{"method":"addLegend","args":[{"colors":["#9ECAE1 , #9ECAE1 0%, #6EB0D7 18.8679245283019%, #4795C8 37.7358490566038%, #2876B8 56.6037735849057%, #1058A2 75.4716981132076%, #093979 94.3396226415094%, #08306B "],"labels":["0","10","20","30","40","50"],"na_color":null,"na_label":"NA","opacity":0.5,"position":"bottomleft","type":"numeric","title":"Num. Sig. Diff.","extra":{"p_1":0,"p_n":0.9433962264150944},"layerId":null,"className":"info legend","group":null}]}],"limits":{"lat":[43.59294129057054,43.82233892063121],"lng":[-79.59509938938234,-79.14737197694456]}},"evals":[],"jsHooks":[]}</script>
+<div
+id="figure-8-map-of-toronto-neighbourhoods-with-number-of-significant-comparisons-in-tukey-test"
+class="section level4">
+<h4>Figure 8: Map of Toronto Neighbourhoods with Number of Significant
+Comparisons In Tukey Test</h4>
+<p>We find that the neighbourhood “most different” from other
+neighbourhoods is Forest Hill South. It had 53 signficant comparisons in
+the Tukey Test. An interesting observation is that the majority of the
+“most different” neighbourhoods are close to downtown. To there appears
+to be some impact of proximity to downtown, on the price of a listing,
+at least on a neighbourhood level.</p>
+</div>
+</div>
+<div id="fitting-predictive-models" class="section level1">
+<h1>Fitting Predictive Models</h1>
+<p>Following this, we proceeded to fit a number of different models, not
+just for the purpose of examining the relationship between the response
+and covariates, but also for the purpose of predicting price. This
+involved fitting the models on a training set (70%) and evaluating on a
+test set (30%).</p>
+<p>In particular, we fit six different candidate models: - Linear
+Regression - Linear Mixed Model (with a random slope given to
+neighbourhood crime and income) - Decision Tree - Bagging Model - Random
+Forest - Gradient Boosting Model</p>
+<p>The full details of the fit are found in the report. However, some
+important details are below.</p>
+<div id="variable-importance-plots" class="section level2 tabset">
+<h2 class="tabset">Variable Importance Plots</h2>
+<div id="bagging" class="section level3">
+<h3>Bagging</h3>
+<div class="plotly html-widget html-fill-item" id="htmlwidget-8490d9e0e2ee12805641" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-8490d9e0e2ee12805641">{"x":{"data":[{"x":[9,7,8,4,6,5,2,1,3],"y":[21699362.649455462,14781508.747897087,17446211.667215895,2224735.4353771294,14065033.665117828,2658137.0064414795,1285279.2890759835,1201417.9111831826,1408841.3095717118],"text":["reorder(Variable, IncNodePurity): lat<br />IncNodePurity: 21699363","reorder(Variable, IncNodePurity): lon<br />IncNodePurity: 14781509","reorder(Variable, IncNodePurity): property_type<br />IncNodePurity: 17446212","reorder(Variable, IncNodePurity): nbd.crime_count<br />IncNodePurity:  2224735","reorder(Variable, IncNodePurity): distance_from_downtown<br />IncNodePurity: 14065034","reorder(Variable, IncNodePurity): nbd.med_hh_scaled<br />IncNodePurity:  2658137","reorder(Variable, IncNodePurity): near.rest<br />IncNodePurity:  1285279","reorder(Variable, IncNodePurity): near.shop<br />IncNodePurity:  1201418","reorder(Variable, IncNodePurity): near.park<br />IncNodePurity:  1408841"],"type":"scatter","mode":"markers","marker":{"autocolorscale":false,"color":"rgba(0,0,0,1)","opacity":1,"size":5.6692913385826778,"symbol":"circle","line":{"width":1.8897637795275593,"color":"rgba(0,0,0,1)"}},"hoveron":"points","showlegend":false,"xaxis":"x","yaxis":"y","hoverinfo":"text","frame":null}],"layout":{"margin":{"t":43.762557077625573,"r":7.3059360730593621,"b":96.319953437909177,"l":66.484018264840202},"plot_bgcolor":"rgba(235,235,235,1)","paper_bgcolor":"rgba(255,255,255,1)","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724},"title":{"text":"Variable Importance For Bagging","font":{"color":"rgba(0,0,0,1)","family":"","size":17.534246575342465},"x":0,"xref":"paper"},"xaxis":{"domain":[0,1],"automargin":true,"type":"linear","autorange":false,"range":[0.40000000000000002,9.5999999999999996],"tickmode":"array","ticktext":["near.shop","near.rest","near.park","nbd.crime_count","nbd.med_hh_scaled","distance_from_downtown","lon","property_type","lat"],"tickvals":[1,2,3,4,5,6,6.9999999999999991,8,9],"categoryorder":"array","categoryarray":["near.shop","near.rest","near.park","nbd.crime_count","nbd.med_hh_scaled","distance_from_downtown","lon","property_type","lat"],"nticks":null,"ticks":"outside","tickcolor":"rgba(51,51,51,1)","ticklen":3.6529680365296811,"tickwidth":0.66417600664176002,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-45,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(255,255,255,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"y","title":{"text":"Variable","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}},"hoverformat":".2f"},"yaxis":{"domain":[0,1],"automargin":true,"type":"linear","autorange":false,"range":[176520.67426956864,22724259.886369076],"tickmode":"array","ticktext":["5.0e+06","1.0e+07","1.5e+07","2.0e+07"],"tickvals":[5000000,10000000,15000000,20000000],"categoryorder":"array","categoryarray":["5.0e+06","1.0e+07","1.5e+07","2.0e+07"],"nticks":null,"ticks":"outside","tickcolor":"rgba(51,51,51,1)","ticklen":3.6529680365296811,"tickwidth":0.66417600664176002,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(255,255,255,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x","title":{"text":"Increase in Node Purity","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}},"hoverformat":".2f"},"shapes":[{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","x0":0,"x1":1,"y0":0,"y1":1}],"showlegend":false,"legend":{"bgcolor":"rgba(255,255,255,1)","bordercolor":"transparent","borderwidth":1.8897637795275593,"font":{"color":"rgba(0,0,0,1)","family":"","size":11.68949771689498}},"hovermode":"closest","barmode":"relative"},"config":{"doubleClick":"reset","modeBarButtonsToAdd":["hoverclosest","hovercompare"],"showSendToCloud":false},"source":"A","attrs":{"5a7c4c68512c":{"x":{},"y":{},"type":"scatter"}},"cur_data":"5a7c4c68512c","visdat":{"5a7c4c68512c":["function (y) ","x"]},"highlight":{"on":"plotly_click","persistent":false,"dynamic":false,"selectize":false,"opacityDim":0.20000000000000001,"selected":{"opacity":1},"debounce":0},"shinyEvents":["plotly_hover","plotly_click","plotly_selected","plotly_relayout","plotly_brushed","plotly_brushing","plotly_clickannotation","plotly_doubleclick","plotly_deselect","plotly_afterplot","plotly_sunburstclick"],"base_url":"https://plot.ly"},"evals":[],"jsHooks":[]}</script>
+</div>
+<div id="random-forest" class="section level3">
+<h3>Random Forest</h3>
+<div class="plotly html-widget html-fill-item" id="htmlwidget-15bc7eceed237c6165c4" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-15bc7eceed237c6165c4">{"x":{"data":[{"x":[9,7,8,4,6,5,1,2,3],"y":[15592197.678787682,14247291.647075975,15285914.790103318,3073427.6451917449,14018590.327250917,3518206.1925048158,1172878.807970949,1174260.7379562545,1300625.8641741446],"text":["reorder(Variable, IncNodePurity): lat<br />IncNodePurity: 15592198","reorder(Variable, IncNodePurity): lon<br />IncNodePurity: 14247292","reorder(Variable, IncNodePurity): property_type<br />IncNodePurity: 15285915","reorder(Variable, IncNodePurity): nbd.crime_count<br />IncNodePurity:  3073428","reorder(Variable, IncNodePurity): distance_from_downtown<br />IncNodePurity: 14018590","reorder(Variable, IncNodePurity): nbd.med_hh_scaled<br />IncNodePurity:  3518206","reorder(Variable, IncNodePurity): near.rest<br />IncNodePurity:  1172879","reorder(Variable, IncNodePurity): near.shop<br />IncNodePurity:  1174261","reorder(Variable, IncNodePurity): near.park<br />IncNodePurity:  1300626"],"type":"scatter","mode":"markers","marker":{"autocolorscale":false,"color":"rgba(0,0,0,1)","opacity":1,"size":5.6692913385826778,"symbol":"circle","line":{"width":1.8897637795275593,"color":"rgba(0,0,0,1)"}},"hoveron":"points","showlegend":false,"xaxis":"x","yaxis":"y","hoverinfo":"text","frame":null}],"layout":{"margin":{"t":43.762557077625573,"r":7.3059360730593621,"b":96.319953437909177,"l":66.484018264840202},"plot_bgcolor":"rgba(235,235,235,1)","paper_bgcolor":"rgba(255,255,255,1)","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724},"title":{"text":"Variable Importance for RF","font":{"color":"rgba(0,0,0,1)","family":"","size":17.534246575342465},"x":0,"xref":"paper"},"xaxis":{"domain":[0,1],"automargin":true,"type":"linear","autorange":false,"range":[0.40000000000000002,9.5999999999999996],"tickmode":"array","ticktext":["near.rest","near.shop","near.park","nbd.crime_count","nbd.med_hh_scaled","distance_from_downtown","lon","property_type","lat"],"tickvals":[1,2,3,4,5,6,6.9999999999999991,8,9],"categoryorder":"array","categoryarray":["near.rest","near.shop","near.park","nbd.crime_count","nbd.med_hh_scaled","distance_from_downtown","lon","property_type","lat"],"nticks":null,"ticks":"outside","tickcolor":"rgba(51,51,51,1)","ticklen":3.6529680365296811,"tickwidth":0.66417600664176002,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-45,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(255,255,255,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"y","title":{"text":"Variable","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}},"hoverformat":".2f"},"yaxis":{"domain":[0,1],"automargin":true,"type":"linear","autorange":false,"range":[451912.8644301123,16313163.62232852],"tickmode":"array","ticktext":["4.0e+06","8.0e+06","1.2e+07","1.6e+07"],"tickvals":[4000000,8000000,12000000,16000000],"categoryorder":"array","categoryarray":["4.0e+06","8.0e+06","1.2e+07","1.6e+07"],"nticks":null,"ticks":"outside","tickcolor":"rgba(51,51,51,1)","ticklen":3.6529680365296811,"tickwidth":0.66417600664176002,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(255,255,255,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x","title":{"text":"Increase in Node Purity","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}},"hoverformat":".2f"},"shapes":[{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","x0":0,"x1":1,"y0":0,"y1":1}],"showlegend":false,"legend":{"bgcolor":"rgba(255,255,255,1)","bordercolor":"transparent","borderwidth":1.8897637795275593,"font":{"color":"rgba(0,0,0,1)","family":"","size":11.68949771689498}},"hovermode":"closest","barmode":"relative"},"config":{"doubleClick":"reset","modeBarButtonsToAdd":["hoverclosest","hovercompare"],"showSendToCloud":false},"source":"A","attrs":{"5a7c1e0216c0":{"x":{},"y":{},"type":"scatter"}},"cur_data":"5a7c1e0216c0","visdat":{"5a7c1e0216c0":["function (y) ","x"]},"highlight":{"on":"plotly_click","persistent":false,"dynamic":false,"selectize":false,"opacityDim":0.20000000000000001,"selected":{"opacity":1},"debounce":0},"shinyEvents":["plotly_hover","plotly_click","plotly_selected","plotly_relayout","plotly_brushed","plotly_brushing","plotly_clickannotation","plotly_doubleclick","plotly_deselect","plotly_afterplot","plotly_sunburstclick"],"base_url":"https://plot.ly"},"evals":[],"jsHooks":[]}</script>
+</div>
+<div id="boosting" class="section level3">
+<h3>Boosting</h3>
+<div class="plotly html-widget html-fill-item" id="htmlwidget-052573d6cded9ecb271e" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-052573d6cded9ecb271e">{"x":{"data":[{"x":[9,8,7,6,5,4,3,2,1],"y":[26.83315842166034,20.346685134534425,17.497202585661128,15.79294204196445,13.006406244697491,5.685016071083461,0.35509870661874643,0.29367588669170575,0.18981490708825036],"text":["reorder(Variable, Relative_Influence): property_type<br />Relative_Influence: 26.8331584","reorder(Variable, Relative_Influence): distance_from_downtown<br />Relative_Influence: 20.3466851","reorder(Variable, Relative_Influence): nbd.med_hh_scaled<br />Relative_Influence: 17.4972026","reorder(Variable, Relative_Influence): lat<br />Relative_Influence: 15.7929420","reorder(Variable, Relative_Influence): lon<br />Relative_Influence: 13.0064062","reorder(Variable, Relative_Influence): nbd.crime_count<br />Relative_Influence:  5.6850161","reorder(Variable, Relative_Influence): near.rest<br />Relative_Influence:  0.3550987","reorder(Variable, Relative_Influence): near.shop<br />Relative_Influence:  0.2936759","reorder(Variable, Relative_Influence): near.park<br />Relative_Influence:  0.1898149"],"type":"scatter","mode":"markers","marker":{"autocolorscale":false,"color":"rgba(0,0,0,1)","opacity":1,"size":5.6692913385826778,"symbol":"circle","line":{"width":1.8897637795275593,"color":"rgba(0,0,0,1)"}},"hoveron":"points","showlegend":false,"xaxis":"x","yaxis":"y","hoverinfo":"text","frame":null}],"layout":{"margin":{"t":43.762557077625573,"r":7.3059360730593621,"b":96.319953437909177,"l":37.260273972602747},"plot_bgcolor":"rgba(235,235,235,1)","paper_bgcolor":"rgba(255,255,255,1)","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724},"title":{"text":"Variable Importance Plot for Boosting","font":{"color":"rgba(0,0,0,1)","family":"","size":17.534246575342465},"x":0,"xref":"paper"},"xaxis":{"domain":[0,1],"automargin":true,"type":"linear","autorange":false,"range":[0.40000000000000002,9.5999999999999996],"tickmode":"array","ticktext":["near.park","near.shop","near.rest","nbd.crime_count","lon","lat","nbd.med_hh_scaled","distance_from_downtown","property_type"],"tickvals":[1,2,3,4,5,6,6.9999999999999991,8,9],"categoryorder":"array","categoryarray":["near.park","near.shop","near.rest","nbd.crime_count","lon","lat","nbd.med_hh_scaled","distance_from_downtown","property_type"],"nticks":null,"ticks":"outside","tickcolor":"rgba(51,51,51,1)","ticklen":3.6529680365296811,"tickwidth":0.66417600664176002,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-45,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(255,255,255,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"y","title":{"text":"Variable","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}},"hoverformat":".2f"},"yaxis":{"domain":[0,1],"automargin":true,"type":"linear","autorange":false,"range":[-1.142352268640354,28.165325597388943],"tickmode":"array","ticktext":["0","10","20"],"tickvals":[0,10,20],"categoryorder":"array","categoryarray":["0","10","20"],"nticks":null,"ticks":"outside","tickcolor":"rgba(51,51,51,1)","ticklen":3.6529680365296811,"tickwidth":0.66417600664176002,"showticklabels":true,"tickfont":{"color":"rgba(77,77,77,1)","family":"","size":11.68949771689498},"tickangle":-0,"showline":false,"linecolor":null,"linewidth":0,"showgrid":true,"gridcolor":"rgba(255,255,255,1)","gridwidth":0.66417600664176002,"zeroline":false,"anchor":"x","title":{"text":"Relative Influence","font":{"color":"rgba(0,0,0,1)","family":"","size":14.611872146118724}},"hoverformat":".2f"},"shapes":[{"type":"rect","fillcolor":null,"line":{"color":null,"width":0,"linetype":[]},"yref":"paper","xref":"paper","x0":0,"x1":1,"y0":0,"y1":1}],"showlegend":false,"legend":{"bgcolor":"rgba(255,255,255,1)","bordercolor":"transparent","borderwidth":1.8897637795275593,"font":{"color":"rgba(0,0,0,1)","family":"","size":11.68949771689498}},"hovermode":"closest","barmode":"relative"},"config":{"doubleClick":"reset","modeBarButtonsToAdd":["hoverclosest","hovercompare"],"showSendToCloud":false},"source":"A","attrs":{"5a7c743b34ec":{"x":{},"y":{},"type":"scatter"}},"cur_data":"5a7c743b34ec","visdat":{"5a7c743b34ec":["function (y) ","x"]},"highlight":{"on":"plotly_click","persistent":false,"dynamic":false,"selectize":false,"opacityDim":0.20000000000000001,"selected":{"opacity":1},"debounce":0},"shinyEvents":["plotly_hover","plotly_click","plotly_selected","plotly_relayout","plotly_brushed","plotly_brushing","plotly_clickannotation","plotly_doubleclick","plotly_deselect","plotly_afterplot","plotly_sunburstclick"],"base_url":"https://plot.ly"},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<div id="section" class="section level2 unnumbered">
+<h2 class="unnumbered"></h2>
+<p><strong>Figure 9: Variable Importance Plots For Bagging, Random
+Forest, and Boosting</strong></p>
+<p>For three models, we were able to obtain variable importance plots.
+We plot them above.</p>
+<p>The variable importance plots for the three different models are
+almost identical. The fact that they agree, gives us confidence that
+this is a good estimation of how important they actually are to the
+price of an AirBnB listing. Based off of the variable importance plot,
+we see that the four most important predictors are latitude, longitude,
+property type and the distance from downtown. The general idea we get
+from this, is hence that the location and property type of the listing
+are what impacts prices the most. In comparison, other neighbourhood
+characteristics like neighbourhood crime or income do not really appear
+to impact the price. This in general, appears to agree with a lot of the
+exploratory visualisations that we saw, where proximity to downtown
+generally appeared to be particularly important (e.g. the leaflet map
+displaying prices on the website). It also agrees with what we saw in
+figure 4, where the distribution of price did not really appear to
+change much with income and crime levels.</p>
+<p>Finally, we can describe the RMSEs for all of the models in a table
+below.</p>
+<table class="table table-striped" style="color: black; width: auto !important; margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+Model
+</th>
+<th style="text-align:right;">
+RMSE on Test Data
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+Linear Regression
+</td>
+<td style="text-align:right;">
+104.4528
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Linear Mixed Model
+</td>
+<td style="text-align:right;">
+104.1224
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Classification Tree
+</td>
+<td style="text-align:right;">
+181.7511
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Bagging
+</td>
+<td style="text-align:right;">
+107.8374
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Random Forest
+</td>
+<td style="text-align:right;">
+105.8210
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Gradient Boosting
+</td>
+<td style="text-align:right;">
+104.5168
+</td>
+</tr>
+</tbody>
+</table>
+<p>Comparing RMSEs, we find that all of the models have rather similar
+errors, except for the classification tree, which performs almost two
+times worse than the others. In terms of the model that minimises the
+RMSE, gradient boosting performs the best. So at least on the basis of
+predictive power, that model would be preferred. In general though, all
+of the RMSEs but that of the classification tree are good, in the sense
+that they are both lower than the mean and median price values (see
+table 2 in report). So they are relatively reasonable.</p>
+</div>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = true;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

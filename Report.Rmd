@@ -1,0 +1,1735 @@
+---
+title: "JSC370 Final Report"
+author: "Aditya Khan"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(ggplot2)
+library(leaflet)
+library(readxl)
+library(geosphere)
+library(knitr)
+library(kableExtra)
+library(tidytext)
+library(wordcloud)
+library(tm)
+library(RColorBrewer)  
+library(gridExtra)
+library(htmltools)
+library(cowplot)
+library(pastecs)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+library(xgboost)
+library(caret)
+#install.packages("car")
+library(car)
+library(faraway)
+library(lme4)
+library(nlme)
+library(lattice)
+library(mlmhelpr)
+library(plotly)
+library(widgetframe)
+library(nlme)
+library(googledrive)
+```
+
+# 1. Introduction
+## 1.1. Background and Research Objective
+When trying to analyse how pricing works in the rental market, the immediate factors behind listing price that immediately come to mind are related to characteristics of the property itself. The intuition would be that other factors like the characteristics of the neighbourhood the listing is in probably would not be as important. The reason being that consumers are less likely to have a strong understanding of characteristics of neighbourhoods if they are travelling. Hence in theory, renters are not required to adjust their price (to a great degree) for the characteristics of the neighbourhood the property is in. This would be in stark contrast to the housing market.
+
+Our objective is to test this theory: to what extent does the characteristics of the neighbourhood actually impact the price of a rental listing? We choose to restrict our setting to AirBnBs and specifically those in Toronto. AirBnBs are chosen because the data is easily obtainable online. Toronto is chosen as the city, due to the fact that it has a good mix of both affluent neighbourhoods (e.g. Trinity Bellwoods), and less affluent ones. 
+
+We choose the neighbourhood characteristics we study according to the following heuristic: what neighbourhood characteristics could potentially impact prices? First, we consider the safety of the neighbourhood. Secondly we consider the median household income of the neighbourhood. Thirdly, we consider the proximity of the place to downtown. The last is important to consider, because proximity to downtown is an indicator for things like quick access to amenities (downtown has a high concentration of shops) and access to luxuries. 
+
+With that said, there is clear confounders that we need to adjust for: namely the property type. Different property types would generally fetch different prices. 
+
+In light of the above discussion, our research question is hence: to what extent is there an association between price of an AirBnB listing in Toronto, and 1) the safety of the neighbourhood the listing is in, 2) the median household income of the neighbourhood, and 3) proximity to downtown? Does this association (if it exists) differ by property type?
+
+As we look the data further, our exploration may inform the addition of further covariates to any model we fit, to answer our research question above. 
+
+## 1.2. Data Description
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+abnb <- read.csv("data/feb 24.csv", na.strings = c("", NA))
+setDT(abnb)
+dim(abnb)
+
+crime <- read.csv("data/Major_Crime_Indicators_Open_Data.csv")
+setDT(crime)
+dim(crime)
+
+nbd_profiles <- read_xlsx("data/neighbourhood-profiles-2021-158-model.xlsx")
+dim(nbd_profiles)
+
+```
+The primary dataset that we use, is AirBnB data from Toronto that was scraped on February 14, 2024 by InsideAirBnB. This data is cross-sectional. Each row in this dataset is a listing, and each column is some feature about the listing. There are 20630 observations in this dataset, and 75 features. Notably, all variables that we listed in our research question are present in this dataset except for two: 
+
+
+  - the amount of crime in a neighbourhood, and
+  - the median household income of the neighbourhood.
+
+
+To find the amount of crime in each neighbourhood, we use data the "Major Crime Indicators (MCI) Open Data" from the Toronto Police Service. Each observation is a major crime (all since 2014). There are 372899 observations. Each column is some feature about the  crime. There are 31 columns. Notably, the columns include which neighbourhood the crime was committed in. We choose to focus on MCIs (rather than petty crimes), because major crimes are the most likely to affect public perception of the safety of a neighbourhood, and hence, prices of a listing. 
+
+The median household income, is obtained from City of Toronto's Open Data. This data contains summary statistics for each neighbourhood in the city, based on the 2021 Canadian census. Each row is a relevant summary statistics (of which there are 2603) and each column is a neighbourhood (of which there are 158). 
+
+
+# 2. Methods
+## 2.1. Wrangling Each Dataset Separately
+
+All of the datasets were downloaded from the websites mentioned in the references sections. In the references section, [1] is the website to download the AirBnB data. Navigate to the section titled Toronto, and download "listings.csv.gz", under February 14, 2024. [3] is the website to download the MCI Open Data. [4] is the website to download the Neighbourhood Profile data. For the latter two, there is a download button on the website. The former two datasets are in CSV format. The final dataset mentioned, from [4], is in XLSX format. 
+
+Altogether, we have three datasets that need to be merged. But before we do that, we need to fix underlying issues that are intrinsic to the dataset. After that is done, we fix issues that can be identified only after merging, and compute any remaining key variables that we need. As a technical note, all wrangling and analysis done below is with the \texttt{data.table} library in \texttt{R} to maximise speed. 
+
+### 2.1.1. Wrangling the Crime Data
+
+```{r echo = FALSE, message=FALSE, warning=FALSE,results='hide'}
+
+summary(crime)
+str(crime)
+head(crime)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE,results='hide'}
+# I take inspiration from my HW1 code here. 
+false_x <- crime[crime$LONG_WGS84 == 0][1]$X
+false_y <- crime[crime$LONG_WGS84 == 0][1]$Y
+crime[] <- lapply(crime, function(x) gsub("NSA", NA, x))
+
+crime$LONG_WGS84[crime$LONG_WGS84 == 0] <- NA
+crime$LAT_WGS84[crime$LAT_WGS84 == 0] <- NA
+crime$X[crime$X == false_x] <- NA
+crime$Y[crime$Y == false_y] <- NA
+
+crime_sub <- crime[, c("OCC_YEAR", "OCC_MONTH", "OCC_DAY", "NEIGHBOURHOOD_158", "LONG_WGS84", "LAT_WGS84")]
+crime_sub <- na.omit(crime_sub)
+crime_sub$occ_month_int <- match(crime_sub$OCC_MONTH, month.name)
+crime_sub$DATE_OCC <- make_datetime(year = as.numeric(crime_sub$OCC_YEAR), month = crime_sub$occ_month_int, day = as.numeric(crime_sub$OCC_DAY))
+target_date <- as.Date("2024-02-14")
+crime_sub <- filter(crime_sub, DATE_OCC >= (target_date - 365), DATE_OCC <= target_date)
+crime_count <- crime_sub[, .(crime_count = .N), by = NEIGHBOURHOOD_158]
+crime_count$crime_count <- crime_count$crime_count / 365
+```
+
+We first wrangled the crime data. This data contained a number of issues. In terms of missing data, the data description for this dataset mentions that geographical missing data is specified as "NSA" for neighbourhood data if either the police division for the observations is also "NSA" or the X, Y coordinates are 0 or outside of Toronto. Taking these conditions into account, we replace occurrences of "NSA" and unrealistic longitude, latitude, X, and Y data (those that are clearly outside Toronto) with NA. 
+
+Another notable issue, was that the occurrence dates for crimes in this dataset (given by "OCC_DATE") were not of type datetime (but rather strings). Furthermore, these dates were incorrect, since for all crimes, the time occurred is listed as occurring at 5 am. Hence, we recalculate the date correctly as a datetime variable. 
+
+Finally, we recall that the point of this dataset was to get an understanding of how safe a neighborhood is. Duly, we create a new variable "crime_count" which is defined as the amount of crimes that were committed per day in a given neighbourhood, within a year of February 14, 2024; the day the AirBnB listings are from. The reason why we only interested in recent criminality, is that it would provide a more accurate understanding of how safe the neighbourhood is at the point of time the listing was given. 
+
+### 2.1.2. Wrangling the Income Data
+
+```{r echo = FALSE, message=FALSE, warning=FALSE,results='hide'}
+summary(nbd_profiles)
+str(nbd_profiles)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE,results='hide'}
+
+median_data <- subset(nbd_profiles, `Neighbourhood Name` == "Median total income of household in 2020 ($)")
+summary(median_data)
+str(median_data)
+head(median_data)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results ='hide'}
+med_t <- t(median_data[-1])
+med_dt <- setDT(data.frame(nbd = rownames(med_t), nbd.med_hh = as.numeric(med_t)))
+```
+
+Next we wrangle the neighbourhood profile data from Open Data from City of Toronto. In this data, we are only interested in obtaining the median household income for each neighbourhood, so we only clean this particular subset of the data. There was no missing data, and all of the data appeared to be realistic. The first issue though, was that the data had neighbourhoods as the columns in the dataset, and not under just one column. Since this would be a problem when we merge with the other datasets on a *single* neighbourhood column, we transposed the data such that all of the neighbourhoods would be under one column, and the corresponding income value would be in a second column. The second issue was that the median household incomes were strings, and not numerics. Hence, we converted them to the correct type. 
+
+
+### 2.1.3. Wrangling the AirBnB Data
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+summary(abnb)
+str(abnb)
+head(abnb)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+
+abnb[] <- lapply(abnb, function(x) gsub("N/A", NA, x))
+convert_price_to_double <- function(price_char) {
+  price_double <- as.numeric(sub("\\$", "", price_char))
+  return(price_double)
+}
+
+abnb$price <- sapply(abnb$price, convert_price_to_double)
+abnb_sub <- abnb[, c("neighborhood_overview", "neighbourhood_cleansed", "latitude", "longitude", "property_type", "price")]
+abnb_sub$latitude <- as.numeric(abnb_sub$latitude)
+abnb_sub$longitude <- as.numeric(abnb_sub$longitude)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+summary(abnb_sub)
+
+```
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+abnb_sub <- abnb_sub[complete.cases(abnb_sub$price), ]
+head(setorder(abnb_sub, price), 30)$price
+abnb_sub <- abnb_sub[abnb_sub$price > 1]
+
+```
+
+Finally, we wrangled the AirBnB data. In the AirBnB data, a number of observations under specific columns were empty or put as missing under the string "N/A", not actually formally given the NA variable. Hence, we made that change. Another issue, was that prices were of type character with a dollar sign pre-pended to the string. We hence fixed that problem by removing the dollar sign, and converting the price to a numeric. Finally, a number of numerical variables like the minimum nights a renter had to stay, were represented by strings, rather than integers. So we converged those to integers.
+
+In terms of unrealistic data, one accommodation set its rent price to just \$1. This observation also required the renter to say over 1000 nights. This is rather unrealistic, so we removed this observation.  
+
+Finally, we consider two further changes we need to make to the variables to ensure easy interpretability and agreement with the other datasets.
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+abnb_sub$property_type <- ifelse(grepl("^Entire", abnb_sub$property_type), "Entire property",
+                                 ifelse(grepl("^Private room", abnb_sub$property_type), "Private room",
+                                        ifelse(grepl("^Shared room", abnb_sub$property_type), "Shared room",
+                                               ifelse(grepl("^Room", abnb_sub$property_type), "Unspecified room", abnb_sub$property_type))))
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+levels(as.factor(abnb_sub$property_type))
+
+```
+
+
+Firstly, recall that we consider property type as a variable we need to adjust for. The problem with the property type as it stands, is that it is a categorical variable with 58 levels. This is bad for interpretability. Hence, we combine property types under 13 few broad categories.These categories were chosen by analysing the prefixes of each category (e.g. 13 of the original categories had "entire" followed by some house type like villa, so these are classified under "entire property"). 
+
+The second consideration was the neighbourhoods that were listed in the observations for this data. Toronto underwent a change in the scheme it used for defining neighbourhoods in 2021, going from 140 to 158 neighbourhoods. To align with the current neighbourhood scheme, we choose to do our analysis using the 158 neighbourhoods; duly the other datasets follow that scheme. However, a few observations in the dataset still used the 140 scheme. Due to the difficulty of mapping exactly which neighbourhood those observations would lie in under the current scheme, we chose to discard those observations.   
+
+## 2.2. Merging and Finalising the Data
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+merged <- merge(
+  x     = abnb_sub,      
+  y     = crime_count, 
+  by.x  = c("neighbourhood_cleansed"),
+  by.y  = c("NEIGHBOURHOOD_158"), 
+  all.x = FALSE,      
+  all.y = FALSE
+)
+
+merged <- merge(
+  x     = merged,      
+  y     = med_dt, 
+  by.x  = c("neighbourhood_cleansed"),
+  by.y  = c("nbd"), 
+  all.x = FALSE,      
+  all.y = FALSE
+)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+new <- c("nbd", "nbd_desc", "lat", "lon", "property_type", "price", "nbd.crime_count", "nbd.med_hh")
+old <- colnames(merged)
+setnames(merged, old, new)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+summary(merged)
+
+```
+
+### 2.2.1. Computing Some Remaining Variables
+After we wrangled and cleaned the data separately, we inner joined all of the data on their neighbourhood columns. After merging, there was one final variable that remained to be computed. We had to compute the proximity to downtown for each property - this is a key predictor in our research question. To compute the distance, we first note that the latitude and longitude for downtown Toronto is 43.6515 and -79.3835 respectively (see [2]). So to compute how many kilometres away a given property is, we compute the Haversine distance between the property's coordinates, and downtown's.
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+downtown_coords <- c(43.6515, -79.3835)
+merged$distance_from_downtown <- distHaversine(downtown_coords, merged[, c("lat", "lon")]) / 1000 
+```
+
+### 2.2.2. Finalising Data Cleaning and Wrangling
+
+The first thing we note in the final cleaning step, is that the range for price is 13-999, whereas it is 57200-222000 for median household income. Since the median household incomes are a couple of order of magnitudes higher, we choose to scale down the median household incomes by dividing by 100, for the purpose of interpretability; this is since we eventually intend to fit a regression model with price as the response. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+merged$nbd.med_hh_scaled <- merged$nbd.med_hh / 100
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+# Number of outliers
+length(boxplot.stats(merged$price)$out) 
+length(boxplot.stats(merged$nbd.crime_count)$out) 
+length(boxplot.stats(merged$nbd.med_hh_scaled)$out)
+length(boxplot.stats(merged$distance_from_downtown)$out)
+length(boxplot.stats(merged$lat)$out)
+length(boxplot.stats(merged$lon)$out)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+ggplot(merged, aes(y = price)) +
+  geom_boxplot() +
+  labs(y = "Price", title = "Boxplot of Property Prices")
+
+ggplot(merged, aes(y = nbd.crime_count)) +
+  geom_boxplot() +
+  labs(y = "Crimes (/day)", title = "Boxplot of Crimes (/day) in Past Year in Neighbourhood")
+
+ggplot(merged, aes(y = nbd.med_hh_scaled)) +
+  geom_boxplot() +
+  labs(y = "Dollars", title = "Boxplot of Scaled Med. HH Income in Past Year in Neighbourhood")
+
+ggplot(merged, aes(y = distance_from_downtown)) +
+  geom_boxplot() +
+  labs(y = "Kilometres", title = "Boxplot of Kilometres From Downtown")
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+merged$property_type <- as.factor(merged$property_type)
+merged$nbd <- as.factor(merged$nbd)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+property_table <- table(merged$property_type)
+print(property_table)
+
+```
+Next, we note that the only levels in the categorical variable that represents property type that have more than 21 observations are: "Shared room", "Private room", and "Entire property". Since all of the rest of the levels have miniscule amounts of data, we remove those observations, to minimise extreme class imbalance.
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+remove_type <- c("Boat", "Camper/RV", "Casa particular", "Castle", "Tiny home", "Treehouse", "Unspecified room")
+
+merged <- merged[!(property_type %in% remove_type)]
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+merged <- merged[, -c("nbd.med_hh")]
+dim(merged)
+
+```
+
+At the end of the cleaning process, we end up with eleven columns, and 8982 observations. We specify the variables we will be using in the rest of the analysis and what they represent below. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+variables <- c("nbd", "nbd_desc", "lat", "lon", "property_type", 
+               "price", "nbd.crime_count", "distance_from_downtown", "nbd.med_hh_scaled")
+
+variable_description <- c("Neighborhood", "Neighbourhood Desc. Given by Host", 
+                           "Latitude", "Longitude", "Property Type", 
+                           "Price of Property", "Crimes in Neighborhood (/day) in Past Year", 
+                           "Distance from Downtown (km)",
+                           "Scaled Med. Household Income in Neighborhood (/$100)")
+
+variable_type <- c("Categorical", "Text Data", "Numerical Predictor", "Numerical Predictor", "Categorical Confounder", 
+                   "Numerical Response", "Numerical Predictor", "Numerical Predictor", 
+                   "Numerical Response")
+
+variable_table <- data.frame(Variable = variables,
+                              Meaning = variable_description,
+                              Role = variable_type)
+
+kable(variable_table) %>%
+  kable_styling(full_width = FALSE, "striped") %>%
+  add_header_above(c("Variable" = 1, "Information" = 2)) %>%
+  row_spec(0, bold = TRUE) %>%
+  column_spec(1, bold = TRUE) 
+```
+
+**Table 1: Variable Descriptions**
+
+## 2.3. Methods for Data Exploration of Variables
+
+Now we explain how we initially analysed the variables that we used our exploration. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+ggplot(merged, aes(x = price)) + 
+  geom_histogram(binwidth = 20, color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Price",
+       x = "Dollars",
+       y = "Frequency")
+
+ggplot(merged, aes(x = distance_from_downtown)) + 
+  geom_histogram(binwidth = 1, color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Distance From Downtown",
+       x = "Distance (km)",
+       y = "Frequency")
+
+ggplot(merged, aes(x = nbd.crime_count)) + 
+  geom_histogram(binwidth = 1, color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Crime Count in Neighborhood (/day) in Past Year",
+       x = "Crime Count (/day)",
+       y = "Frequency")
+
+ggplot(merged, aes(x = nbd.med_hh_scaled)) + 
+  geom_histogram(binwidth = 60, color = "black", alpha = 0.7) +
+  labs(title = "Scaled Median Household Income in Neighborhood (/$100)",
+       x = "Dollars (/100)",
+       y = "Frequency")
+
+```
+
+Our analysis will start by analysing summaries about each of the numerical and categorical variables we are interested in. Once we have that introductory understanding of the properties of the variables, we begin to explore relationships between the variables. 
+
+The first thing we do, is some text analysis. In our data, we have access to descriptions that the host of the property wrote, to describe it: \texttt{nbd.desc} in our nomenclature. So to get an introductory understanding of whether neighbourhoods impact price, by seeing whether the top tokens in the descriptions differ between different listing price levels.
+
+That only provides us with a broad idea of whether we can expect any stark differences between price levels, at least from the perspective of the hosts. So we turn our attention to analysing how the distribution of price changes (or doesn't change) with the predictors. Namely, we plot a stacked histogram of price, with respect to the property type. This gives us an indication of how much of an effect our confounder has. 
+
+We then plot boxplots of the price distribution, over different levels of median household income and crime counts (which are two of our predictors of interest) to see if it seems to have any notable impact on price. To solidify our understanding of whether it does, we follow that visualisation up, with a scatterplot involving crime counts, income, and price. 
+Our final visualisation is a map of each neighbourhood in Toronto, coloured by the price. By marking downtown on the map, we get a rough idea of whether proximity to downtown actually matters. 
+
+After getting a grasp of the relationships of interest from the visualisations, we formally test the relationships by building a number of models, both for the purpose of examining the relationship price has with the predictors in our research question, and for the the purpose of prediction. The former directly answers our research question. The latter indirectly answers our research question (if a model is predictive, we can expect some broad association between the covariates and the response). 
+
+We build a number of different models to answer our question
+
+  - A mean model with price as the response and neighbourhood as the "treatment". The rationale for building this separately is mentioned in section 3.
+  - A linear regression model to directly answer our research question. 
+  - A linear mixed model to account for the neighbourhood level covariates (e.g. neighbourhood household income) in our data. 
+  - A regression tree to predict price. 
+  - Bagging Random Forest, Boosting models to predict price. 
+
+Throughout the model building process, we highlight important insights we obtain about the relationship between the covariates and the response. At the end, we also choose the best model, primarily on the basis of comparing RMSE. 
+
+# 3. Preliminary Results
+## 3.1. Summary Statistics
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+setDT(merged)
+stats <- stat.desc(merged[,c("price", 
+                        "distance_from_downtown", 
+                        "nbd.crime_count",
+                        "nbd.med_hh_scaled")])
+stats_df <- as.data.frame(stats)
+stats_df[] <- lapply(stats_df, function(x) if(is.numeric(x)) sprintf("%.2f", x) else x)
+rownames(stats_df) <- c("# of Values", "# Null", "# Missing", "Min", "Max", "Range", "Sum", "Median", "Mean", "SE of Mean", "95% CI of Mean", "Variance", "SD", "Coef. of Variation")
+kable(stats_df) %>%
+  kable_styling(full_width = FALSE, "striped") %>%
+  row_spec(0, bold = TRUE) %>%
+  column_spec(1, bold = TRUE) 
+```
+
+**Table 2: Summary Statistics For Numerical Variables**
+
+In table 2, we see that none of the variables have any missing values. For all of the variables, the mean is larger than the median. As well, the mean for all variables appears to be closer to the min value, than the max. Both of these facts indicate that all of the distributions are to some degree, right-skewed. In fact, we can separately compute the number of outliers for the relevant variables as follows:
+
+  - Price has 628 outliers
+  - Crimes per day in neighbourhood in past year has 272 outliers
+  - Scaled neighbourhood household income has 454 outliers
+  - Distance from downtown has 198 outliers
+
+The reason why we did not remove outliers, is that the outliers make sense for all of the variables. Most properties that are listed are likely normal houses or apartments, so the right skew occurs due to the occasional lister who puts up a property for rent that is very upscale. A similar rationale explains why household income is right skewed. As for distance to downtown, the right skew also makes sense. One would expect that most properties in Toronto proper, would be centred around Downtown, so for most places, the distance would be small, and hence, a right skew. For crimes per day, most places would be relatively safe, except for a handful of neighbourhoods.  
+
+Now we look at the one categorical variable represented in our research question. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+property_table <- table(merged$property_type)
+
+prop_property <- prop.table(property_table)
+
+property_df <- data.frame(Type = names(property_table),
+                          Count = as.numeric(property_table),
+                          Proportion = as.numeric(prop_property))
+
+property_df <- property_df[property_df$Count > 0,]
+
+kable(property_df, 
+      align = c("l", "c", "c"), 
+      format.args = list(scientific = FALSE)) %>%
+  kable_styling(full_width = FALSE)
+
+```
+
+
+**Table 3: Summary Statistics For Property Type**
+
+We see that about 56% of the data properties allow for the rent of the entire property, 42% allow for a private room, and just 1% allow for a shared room. This makes sense, since most consumers would prefer living with some degree of privacy. So, listings that allow for that are likely to be more common, just to align with demand. 
+
+## 3.2. Visualisations
+
+Now we do visualisations. We start by analysing the neighbourhood descriptions that hosts write on the listing page, detailing qualities of the neighbourhood. Particularly, we want to see if the words they use differ by price level. Here, we defining a price to be "low" (if between 0-quartile 1), "medium" (if between quartile 1-3), or "high" (above quartile 3). 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+prices <- merged$price
+p.q <- quantile(prices, na.rm = TRUE)
+merged$price_level <- ifelse(prices >=  0 & prices <= p.q[2], "low",
+                                ifelse(prices > p.q[2] & prices <= p.q[4], "medium",
+                                       ifelse(prices > p.q[4], "high", NA)))
+
+
+incomes <- merged$nbd.med_hh_scaled
+hh.q <- quantile(incomes, na.rm = TRUE)
+merged$income_level <- ifelse(incomes >=  0 & incomes <= hh.q[2], "low",
+                              ifelse(incomes > hh.q[2] & incomes <= hh.q[4], "medium",
+                                     ifelse(incomes > hh.q[4], "high", NA)))
+
+cc <- merged$nbd.crime_count
+cc.q <- quantile(cc, na.rm = TRUE)
+merged$cc_level <- ifelse(cc >=  0 & cc <= cc.q[2], "low",
+                          ifelse(cc > cc.q[2] & cc <= cc.q[4], "medium",
+                                 ifelse(cc > cc.q[4], "high", NA)))
+
+merged$income_level <- as.factor(merged$income_level)
+merged$cc_level <- as.factor(merged$cc_level)
+
+
+```
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged[!is.na(merged$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+layout(matrix(1:3, nrow = 1)) 
+
+par(mfrow = c(1, 3))
+ 
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+
+```
+
+**Figure 1: Word Clouds of Neighbourhood Descriptions, by Price Level**
+
+We see in Figure 1 that the words used are almost the same across all three price levels. Namely, there is an emphasis on walkability, restaurants and shops, and being close to parks. On one hand, this may just be telling us that hosts like to emphasise those facts irrespective of price levels since they know they will appeal to the consumer. 
+
+On the other hand, it is notable that all of the things that are emphasised in the word clouds are things that characterise downtown: namely quick access to amenities and easy walkability. If we interpret these words as what hosts think will appeal to a customer, clearly that means the customer demands these things. And if they're found in downtown, then we would expect demand for AirBnBs near downtown to be higher - and hence, raise the cost of the listing. So this can suggest in a weak sense that proximity to downtown may have some influence on price (in fact, this is verified explicitly later in the map visualisations on the website). 
+
+One thing that this text analysis does show, is that specific amenities could potentially be predictive of price. Namely, restaurants, shops and parks. These feature prominently in the wordclouds. Hence, we create binary variables \texttt{near.rest}, \texttt{near.shop}, \texttt{near.park} for those amenities respectively, evaluating to 1 if the term shows up in the neighbourhood description and 0 otherwise. 
+
+Beyond what we did above, we can also do a more granular analysis, by additionally seeing if the word clouds change, as we consider only listings of a certain property type. In our case, subsetting our data only for listings that yield the "entire property" or a "private room" yield nearly identical wordclouds to that in figure 1. 
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.ep <- merged[property_type == "Entire property"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.ep[!is.na(merged.ep$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+layout(matrix(1:3, nrow = 1)) 
+
+par(mfrow = c(1, 3))
+ 
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.pr <- merged[property_type == "Private room"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.pr[!is.na(merged.pr$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+layout(matrix(1:3, nrow = 1)) 
+
+par(mfrow = c(1, 3))
+
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center'}
+
+merged.sr <- merged[property_type == "Shared room"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.sr[!is.na(merged.sr$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+**Figure 2: Word Clouds of Neighbourhood Descriptions for Shared Room Listings, by Price Level**
+
+The wordcloud for shared rooms listings differs quite a bit from figure 1 though. This can be for two reasons. The first reason could be that there are not many observations for shared room listings, so perhaps the wordclouds are not representative. Alternatively, the wordclouds to capture some difference in neighbourhood description, compared to the other property types. In that case, it justifies our inclusion of property type as a confounder in predicting price. 
+
+In a similar way, we can also subset for listings in neighbourhoods of a certain crime or income level, to check if the neighbourhood descriptions differ. To do this, we define crime levels and income levels in a similar way to how we defined it for categorical price levels. 
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.inc.high <- merged[income_level == "high"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.inc.high[!is.na(merged.inc.high$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+ 
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.inc.med <- merged[income_level == "medium"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.inc.med[!is.na(merged.inc.med$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.inc.low <- merged[income_level == "low"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.inc.low[!is.na(merged.inc.low$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.cc.high <- merged[cc_level == "high"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.cc.high[!is.na(merged.cc.high$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.cc.med <- merged[cc_level == "medium"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.cc.med[!is.na(merged.cc.med$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+```{r fig.width=7, fig.height=7, echo = FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.show='hide', results='hide', eval=FALSE}
+
+merged.cc.low <- merged[cc_level == "low"]
+sw <- c(stopwords("english"), "br", "toronto", "neighbourhood", "neighborhood")
+merged.text <- merged.cc.low[!is.na(merged.cc.low$nbd_desc), ]
+merged.text_low <- merged.text[price_level == "low"]
+merged.text_mid <- merged.text[price_level == "medium"]
+merged.text_high <- merged.text[price_level == "high"]
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+palette_mid <- brewer.pal(9, "Purples")[4:9]
+palette_high <- brewer.pal(9, "Oranges")[4:9]
+
+tokens_low <- merged.text_low |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_mid <- merged.text_mid |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+tokens_high <- merged.text_high |>
+  select(nbd_desc) |>
+  unnest_tokens(token, nbd_desc) |>
+  filter(!token %in% sw) |>
+  filter(!str_detect(token, "[[:digit:]]+")) |>
+  count(token, sort = TRUE) |>
+  head(20)
+
+
+par(mfrow = c(1, 3))
+wordcloud(words = tokens_low$token, 
+          freq = tokens_low$n,
+          scale = c(2.5, 0.25),  
+          max.words = 50,
+          colors = palette_low)     
+text(x = 0.5, y = -0.2, labels = "Low Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_mid$token, 
+          freq = tokens_mid$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_mid)
+text(x = 0.5, y = -0.2, labels = "Mid Price", cex = 1.5, adj = 0.5)
+
+wordcloud(words = tokens_high$token, 
+          freq = tokens_high$n,
+          scale = c(2.5, 0.25),
+          max.words = 50,
+          colors = palette_high)
+text(x = 0.5, y = -0.2, labels = "High Price", cex = 1.5, adj = 0.5)
+par(mfrow = c(1, 3))
+
+```
+
+However after doing that, we find that there is no substantial difference in wordclouds across the different income and crime levels. This tells us that, at least from the perspective of the listers, the crime or income level does not really impact the neighbourhood description across price levels. 
+
+The next visualisation we observe is the stacked histogram of price, by property type. The idea is that we want to verify our previous findings: that is, if price changes by property. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+colors <- c("Entire property" = "#1f77b4",  
+            "Private room" = "#ff7f0e",      
+            "Shared room" = "#2ca02c")       
+
+ggplot(merged, aes(x = price, fill = property_type)) +
+  geom_histogram(position = "identity", bins = 30, alpha = 0.5) +
+  scale_fill_manual(values = colors) +  
+  labs(title = "Stacked Histogram of Price, by Property Type",
+       x = "Price", y = "Frequency", fill = "Property Type")
+
+
+```
+
+**Figure 3: Stacked Histogram of Price, by Property Type**
+
+As we can see in the above distribution, it does to some degree. The distribution for a private room's price is must narrower and clustered around lower prices, in contrast to entire property. This makes sense, since renting an entire property would make sense to cost a lot more. Most importantly, it justifies our choice to adjust for property type, because as we can see, it does have an impact on our desired response. 
+
+Next we verify whether the price distribution changes according to different levels of scaled median household income, and crime. This can help us inform some of the lack of differences we saw in the wordclouds, when subsetting for different income levels, and crime levels. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+
+p1 <- ggplot(merged, aes(x = income_level, y = price, fill = income_level)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of Price by Scaled Median Household Income Level",
+       x = "Scaled Income Level",
+       y = "Price",
+       fill = "Income Level") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+p2 <- ggplot(merged, aes(x = cc_level, y = price, fill = cc_level)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of Price by Crime Level",
+       x = "Crime Level",
+       y = "Price",
+       fill = "Crime Level") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot_grid(p1, p2, ncol = 1)
+
+```
+
+**Figure 4: Boxplot of Price, by Scaled Median Household Income Level and Crime Level**
+
+We note here that the levels for scaled median household income and crime are defined in exactly the same way as they were for price level. 
+
+Analysing the boxplots, there appear to be a substantial amount of outliers for price. However, the actual distribution seems not to really differ between either crime level, or scaled household income. What this suggests, is that even if there is a significant relationship between these variables and price, the actual rate at which price changes with respect to these variables probably will not be that much. 
+
+To verify that claim, we now plot a scatterplot with price as the response. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+ggplot(merged, aes(x = price, y = nbd.med_hh_scaled, size = nbd.crime_count, color = property_type)) +
+  geom_point(alpha=0.5) +
+  scale_size_continuous(range = c(1, 5)) +  
+  labs(title = "Price Against Scaled Household Income, by Crimes and Property Type",
+       x = "Scaled Household Income (/100)",
+       y = "Price",
+       size = "Crimes (/Day)",
+       color = "Property Type")
+
+```
+
+**Figure 5: Price Against Scaled Household Income, by Crimes and Property Type**
+
+Here, we plot price against scaled household income. The size of the dots correspond to increasing crimes levels (that is, crimes committed per day). The colour corresponds to the property type. 
+
+We see that there is at best a weak positive linear association between price and scaled household income. Of course, if there was going to be any association at all, then it makes sense that it would be positive, since if the neighbourhood is affluent, the property is likely to be upscale, and hence cost more. But the fact that it seems that it is not too strong, agrees with our explanation in the introduction of this report. 
+
+In terms of crimes per day, we the majority of the large circles (which mean more crime per day) appear to be clustered around the bottom of the plot - i.e. where price is low. This would give some credence to the claim that more crime leads to lower prices - which is not unreasonable to claim since one would have likely have more crime in less affluent areas. With that said, this does not provide any conclusive evidence towards a relationship, particularly since the small circles (which represent less crimes) appear to be evenly spread across the chart.
+
+Finally, it is worth noting that the majority of the private room listings appear to be in places where household income is lower. On the other hand, those renting out the entire property appear to be evenly spread. There seems to be minimal difference with respect to price though.
+
+One variable that we have not yet explored yet is the distance to downtown. We can analyse this alongside the neighbourhood level variables of income level and crime, in a 3D scatterplot, coloured by price. This visualisation is found on the website associated with this project. On this visualisation, we see that in general, the majority of the more expensive listings (those of a lighter colour) are found relatively close to downtown, and in neighbourhoods with a slightly lower crime count. Interestingly, the median household income of the neighbourhood does not appear to have any large impact on price, as the proportion of relatively expensive listings (those of a lighter colour) appears to only increase by a little bit, across levels of income. This in particular, agrees with what we found in figure 4 and 5. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+merged.nbd_summary <- merged[, .(
+  lon = mean(lon, na.rm = TRUE),
+  lat = mean(lat, na.rm = TRUE),
+  price = round(mean(price, na.rm = TRUE))
+), by = c("nbd")]
+
+```
+
+
+Our final visualisation is a map where each marker is on a neighbourhood, and written on the marker is the mean price for an AirBnB listing in that neighbourhood. The darker the colour, the higher the price. Hovering over each marker will yield the neighbourhood name. This visualisation is again found on the website. 
+
+We can see that the less costly places to get an AirBnB are on the outskirts of city. And it does appear to be true in general, that as you get closer to downtown (which is marked red on the map), the markers get darker - and hence of higher price. So it does seem to suggest that proximity to downtown does matter towards prices. 
+
+We verify all of these assertions now, by modelling.
+
+
+## 3.3. Model Fitting
+
+Throughout the fitting process, for any hypothesis test, we choose to test at a standard significance level of $\alpha = 0.05$. For any model that is not the mean model, we also use it as a predictive model. So, we fit those models on a training set, and evaluate on a test set. The test set consists of 70% of the dataset. 
+
+### 3.1.1 Mean Model
+
+The first thing we do, is fit a simple mean model. Here, all we check is the hypothesis $H_0:$ all neighbourhood price means are the same, against $H_1:$ there is at least one neighbourhood that differs in mean. 
+
+Our rationale for doing this is twofold. The first is that it gives us a general understanding of whether neighbourhood does have an impact on price. This can be particularly enlightening, when we do further post-hoc analysis on the ANOVA results. The second reason this is useful, is that, as explained in the next subsection, we cannot actually include neighbourhood as a predictor in the linear regression model. So, this simple mean model allows us to still fit a model with neighbourhood as a predictor. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+unique_nbds <- as.character(unique(merged$nbd))
+nbds_df <- data.frame(nbd = unique_nbds, index = seq_along(unique_nbds))
+nbds_df$nbddotted <- gsub("-", ".", nbds_df$nbd)
+merged$nbddotted <- gsub("-", ".", merged$nbd)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+anova.res <- aov(price ~ nbddotted, data = merged)
+
+```
+
+Upon fitting the model, we find that the p-value is rounded to zero. So at least, we can conclude that there is a signficant difference between at least one neighbourhood's mean AirBnB's price, against the others. Since some neighbourhoods do have different prices than others, it is reasonable to conclude that neighbourhood does matter to some degree. 
+
+Using these results, we proceed to do some post-hoc analysis, using a Tukey HSD test. This is a test that allows us to assess the significance of pairwise comparisons of mean neighbourhood prices. Namely, $H_0: \mu_i = \mu_j$ and $H_0: \mu_i = \mu_j$, for neighbourhood $i \neq j$. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+
+tukey_result <- TukeyHSD(anova.res)
+
+tukey_df <- as.data.frame(tukey_result$nbd)
+tukey_df$Comparison <- rownames(tukey_df)
+rownames(tukey_df) <- NULL
+tukey_df <- tukey_df[, c("Comparison", "diff", "lwr", "upr", "p adj")]
+
+tukey_df$p.adj <- tukey_df$`p adj`
+dim(tukey_df)
+setDT(tukey_df)
+
+sig.comparisons.tukey <- tukey_df[p.adj < 0.05]
+
+```
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+sig.comparisons.tukey$abs.diff <- abs(sig.comparisons.tukey$diff)
+summary(sig.comparisons.tukey$abs.diff)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+insig.comparisons.tukey <- tukey_df[!(Comparison %in% sig.comparisons.tukey$Comparison)]
+insig.comparisons.tukey$abs.diff <- abs(insig.comparisons.tukey$diff)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+summary(insig.comparisons.tukey$abs.diff)
+dim(sig.comparisons.tukey)[1] / dim(tukey_df)[1]
+dim(insig.comparisons.tukey)[1] / dim(tukey_df)[1]
+```
+
+Upon doing the Tukey test, we find that only around 6% of the pairwise comparisons are actually significant. Furthermore, among signficant comparisons, the absolute difference in mean price is on average, 98.61. On the other hand, among insignficant comparisons, the absolute difference in mean price is on average, 35.82. 
+
+This tells a couple of things. Firstly, most neighbourhoods are actually not that different from each other, when it comes to price. However, for the neighbourhoods that are significantly in price the difference in mean neighbourhood AirBnB price on average, appears to be quite a lot. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+all_nbds <- unlist(strsplit(sig.comparisons.tukey$Comparison, "-"))
+
+nbd_counts <- table(all_nbds)
+
+nbd_difference <- as.data.frame(nbd_counts)
+nbd_difference <- nbd_difference[order(-nbd_difference$Freq), ]
+
+merged.nbd_df <- merge(
+  x     = nbds_df,      
+  y     = nbd_difference, 
+  by.x  = c("nbddotted"),
+  by.y  = c("all_nbds"), 
+  all.x = TRUE,      
+  all.y = FALSE
+)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+merged.nbd_df <- merge(
+  x     = merged.nbd_df,      
+  y     = merged.nbd_summary, 
+  by.x  = c("nbd"),
+  by.y  = c("nbd"), 
+  all.x = FALSE,      
+  all.y = FALSE
+)
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+merged.nbd_df$Freq[is.na(merged.nbd_df$Freq)] <- 0
+```
+
+
+One final piece of information we can garner from the post-hoc analysis, is a rough measure of how different a given neighbourhood is, compared to any other neighbourhood in Toronto. We can do this, by counting the number of significant comparisons a neighbourhood had in the Tukey Test. 
+
+We display the results of this computation as a map, posted on the website. We find that the neighbourhood "most different" from other neighbourhoods is Forest Hill South. It had 53 signficant comparisons in the Tukey Test. An interesting observation is that the majority of the "most different" neighbourhoods are close to downtown. To there appears to be some impact of proximity to downtown, on the price of a listing, at least on a neighbourhood level. 
+
+### 3.3.2. Linear Regression Model 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+near.rest <- ifelse(grepl("restaurant|restaurants", tolower(merged$nbd_desc)), 1, 0)
+merged$near.rest <- near.rest
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+near.shop <- ifelse(grepl("shop|shops|shopping", tolower(merged$nbd_desc)), 1, 0)
+merged$near.shop <- near.shop
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+near.park <- ifelse(grepl("park", tolower(merged$nbd_desc)), 1, 0)
+merged$near.park <- near.park
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+merged_mod <- merged[, -c("nbd_desc", "price_level", "income_level", "cc_level", "nbddotted")]
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+set.seed(69420)
+train<-sample(1:nrow(merged_mod), round(0.7*nrow(merged_mod)))
+merged_mod_train<-merged_mod[train,]
+merged_mod_test<-merged_mod[-train,]
+
+```
+
+We build the linear regression model in the following way. Firstly, we fit a full model with every predictor mentioned in table 1, including the three new binary variables we defined when analysing the wordclouds. At this point, we address any issues with the fit, and refit the model. Then, we use stepwise variable selection (with AIC as the criterion) to select variables. Finally, we do some quick comparisons of the full model with the reduced model, to choose a finalised linear regression model. 
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+lm_nbd <- lm(price ~ ., data = merged_mod_train)
+summary(lm_nbd)
+# clearly get singularities
+```
+
+Now we proceed with building the model. After fitting the initial model, we find that the design matrix was singular. Some further experimentation showed that the reason, was the inclusion of neighbourhood as a predictor. The reason this could have caused issues is either because 1) some neighbourhoods had very small number of listings, or 2) amongst neighbourhoods, the difference in price was in general quite small. This could cause instability in the numerical estimates for the coefficients. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+merged_mod_train_nonbd <- merged_mod_train[, -c("nbd")]
+merged_mod_test_nonbd <- merged_mod_test[, -c("nbd")]
+lm.mod_full <- lm(price ~ ., data = merged_mod_train_nonbd)
+summary(lm.mod_full)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+vif(lm.mod_full)
+
+```
+
+Either way, this meant that we had to remove neighbourhood as a predictor. Upon refitting the full model without neighbourhood, we find that the fit no longer had any singularities. Furthermore, the variance inflation factor of each predictor was close to 1, so multicollinearity was minimal. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+sel.var.aic <- step(lm.mod_full, trace = 0, k = 2, direction = "both") 
+select_var_aic<-attr(terms(sel.var.aic), "term.labels") # Extract the variables selected  
+select_var_aic
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+lm.mod_stepaic <- lm(price ~ lat + lon + property_type + nbd.crime_count + distance_from_downtown + nbd.med_hh_scaled, data = merged_mod_train_nonbd)
+summary(lm.mod_stepaic)
+
+```
+Then we proceeded with stepwise selection (using AIC as the criterion). The selected variables can be found in table 5. After fitting the model, we compared the reduced model with the full model. The comparison results are below. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+AIC(lm.mod_full) 
+AIC(lm.mod_stepaic)
+BIC(lm.mod_full) 
+BIC(lm.mod_stepaic)
+pftest <- anova(lm.mod_full, lm.mod_stepaic)
+pftest
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+lm.mod_full_pred<-predict(lm.mod_full, merged_mod_test_nonbd)
+lm.mod_stepaic_pred<-predict(lm.mod_stepaic, merged_mod_test_nonbd)
+lm.mod_full_rmse <- sqrt(mean((merged_mod_test_nonbd$price - lm.mod_full_pred)^2))
+lm.mod_stepaic_rmse <- sqrt(mean((merged_mod_test_nonbd$price - lm.mod_stepaic_pred)^2))
+lm.mod_full_rmse
+lm.mod_stepaic_rmse
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+aic_vals <- c(AIC(lm.mod_full), AIC(lm.mod_stepaic))
+bic_vals <- c(BIC(lm.mod_full), BIC(lm.mod_stepaic))
+rsquareds <- c(0.216, 0.216)
+lm.rmses <- c(lm.mod_full_rmse, lm.mod_stepaic_rmse)
+models <- c("Full", "Reduced")
+
+lm.comp_df <- data.frame(Model = models, AIC = aic_vals, BIC = bic_vals, `Adjusted R-squared` = rsquareds, `RMSE on Test` = lm.rmses)
+lm.comp_df <- kable(lm.comp_df, col.names = c("Model", "AIC", "BIC", "Adjusted R-Squared", "RMSE on Test Data"))
+kable_styling(lm.comp_df, full_width = FALSE, 'striped')
+
+
+```
+
+**Table 4: Linear Regression Model Comparison Results**
+
+In the above table, we see that across all metrics, the reduced model is at least as good as the full model. Namely, the AIC, BIC, and RMSE are all lower for the reduced model. It also matches the full model on adjusted $R^2$. Therefore, the reduced linear regression model is chosen. The model summary is below. 
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+coefficients <- summary(lm.mod_stepaic)$coefficients[, c(1, 2, 4)]
+coefficients_df <- as.data.frame(coefficients)
+colnames(coefficients_df) <- c("Coefficient", "Std. Error", "P-value")
+rownames(coefficients_df) <- c("Intercept", "Latitude", "Longitude", "Property Type: Private Room", "Property Type: Shared Room", "Crimes Per Day in Past Year", "Distance From Downtown", "Median Household Income Scaled")
+
+kable(coefficients_df) %>%
+  kable_styling(full_width = FALSE, "striped")
+
+```
+
+
+**Table 5: Linear Regression Results**
+
+We see that the p-value for all of the coefficients significant, except for longitude. So it is in fact the case that these predictors have a significant association with price. Looking at the specific values now, we see that in the presence of all other predictors, for a one unit increase in the distance from downtown, we expect that the price goes down by \$0.98. This agrees with the results we saw from figure 5, and with the rationale we gave for why this can make sense. 
+
+We also see that in the presence of all the other predictors, for a $100 increase in medium household income, the price of the listing hoes up by on average, \$0.05. The weak positive trend agrees with what we concluded under figure 4, and the rationale given there for why this can make sense.
+
+Finally of note, is that in the presence of the other predictors, for one more crime per day in the past year in that neighbourhood, the price of a listing in the neighbourhood increases by \$5.08 on average. This is very counterintuitive and almost contradictory to what we expected from figure 4, and from intuition (in section one). The only way that this can make sense, is that if we consider downtown to be more crime prone than the rest of the city. Then since proximity of downtown increases price, so would crime. 
+
+
+### 3.3.3. Linear Mixed Model
+
+Next we fit a linear mixed model. The reason why we do this, is that is a natural grouping structure in our data: neighbourhoods. Furthermore, in our data, we have both individual (i.e. AirBnB listing) level predictors, as well as group level covariates (e.g. neighbourhood crime level). So it is a natural choice to fit a model that accounts for this. Namely, we account for this grouping structure by considering all of the covariates in the full linear regression model, with an additional correlated random slope for the neighbourhood crime level and neighbourhood income level covariates, with respect to the neighbourhood. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+nlme.mod <- lme(price ~ lat + lon + property_type + nbd.crime_count + distance_from_downtown + nbd.med_hh_scaled + near.rest + near.shop + near.park, 
+                random = ~1 + nbd.crime_count + nbd.med_hh_scaled | nbd, 
+                data = merged_mod_train)
+summary(nlme.mod)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+lmm_res <- as.data.frame(coef(summary(nlme.mod)))
+colnames(lmm_res) <- c("Coefficient", "Std. Error", "DF", "t-value", "P-value")
+rownames(lmm_res) <- c("Intercept", "Latitude", "Longitude", "Property Type: Private Room", "Property Type: Shared Room", "Crimes /Day in Past Year", "Distance From Downtown", "Med. Household Income Scaled", "Restaurant in Text Description", "Shop In Text Description", "Park in Text Description")
+
+kable(lmm_res) %>%
+  kable_styling(full_width = FALSE, "striped")
+```
+
+**Table 6: Linear Mixed Model Results**
+
+The estimated coefficients are all relatively similar to those that were obtained from fitting the linear regression. The difference is that the estimates are uniformly somewhat closer to 0, than those of the linear regression. However, the standard errors of significant estimates are slightly higher. Furthermore, neighbourhood crime is no longer significant. So at least when it comes to examining the relationship between the predictors and the response, this model may not be as good. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+lmm.mod_pred<-predict(nlme.mod, merged_mod_test)
+lmm.mod_rmse <- sqrt(mean((merged_mod_test$price - lmm.mod_pred)^2))
+lmm.mod_rmse
+
+```
+
+### 3.3.3. Machine Learning Models
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+tree <- rpart(
+  price ~ .,
+  method = "class",
+  data = merged_mod_train_nonbd,
+  minsplit = 10,
+  minbucket = 3,
+  cp = 0,
+  xval = 10
+)
+
+printcp(tree)
+optimalcp = tree$cptable[which.min(tree$cptable[, 'xerror']), "CP"]
+optimalcp
+
+tree_prune<-prune(tree, cp = optimalcp)
+tree_pred<-predict(tree_prune, merged_mod_test_nonbd)
+
+tree_rmse <- sqrt(mean((merged_mod_test_nonbd$price - tree_pred)^2))
+tree_rmse
+
+```
+
+
+Now we fit three different machine learning models. First, we fit a basic decision tree, using all of the predictors. We fit this using parameters of minsplit = 10 (i.e. minimum observataions for a node to be split), minbucket = 3 (i.e. minimum observations in a leaf), and do 10 cross validations. In particular, we choose a complexity parameter based off of what minimises xerror. The optimal complexity parameter we obtained was 0.0002. 
+
+The second model that we fit was a bagging model. The third model that we fit was a random forest model. And the fourth and final model fitted, was a gradient boosting model. We note that for the gradient boosting model, we chose to use 1000 trees and 5-fold cross validation.
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+bag<-randomForest(
+  price ~ .,
+  data = merged_mod_train_nonbd,
+  mtry = ncol(merged_mod_train_nonbd)-1,
+  na.action = na.omit
+)
+bag_predictions <- predict(bag, newdata = merged_mod_test_nonbd)
+bag_importance <- importance(bag)
+bag_importance <- data.frame(
+  Variable = rownames(bag_importance), 
+  Importance = bag_importance
+)
+setDT(bag_importance)
+
+bag_imp <- ggplot(data = bag_importance, aes(x = reorder(Variable, IncNodePurity), y = IncNodePurity)) +
+  geom_point() +
+  labs(x = "Variable", y = "Increase in Node Purity", title = "Variable Importance For Bagging") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+bag_imp
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+rmse_bag <- sqrt(mean((merged_mod_test_nonbd$price - bag_predictions)^2))
+rmse_bag
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+rf<-randomForest(
+  price ~ .,
+  data = merged_mod_train_nonbd,
+  na.action = na.omit
+)
+rf_predictions <- predict(rf, newdata = merged_mod_test_nonbd)
+
+rf_importance <- importance(rf)
+rf_importance <- data.frame(
+  Variable = rownames(rf_importance), 
+  Importance = rf_importance
+)
+
+rf_imp <- ggplot(data = rf_importance, aes(x = reorder(Variable, IncNodePurity), y = IncNodePurity)) +
+  geom_point() +
+  labs(x = "Variable", y = "Increase in Node Purity", title = "Variable Importance for RF") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+rf_imp
+
+rf_predictions <- predict(rf, newdata = merged_mod_test_nonbd)
+rmse_rf <- sqrt(mean((merged_mod_test_nonbd$price - rf_predictions)^2))
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+#lambda <- seq(0.01, 0.5, by = 0.05)
+lambda <- seq(0.01, 0.1, by = 0.05)
+errors <- sapply(lambda, function(shrinkage) {
+  boost_model <- gbm(price ~ ., data = merged_mod_train_nonbd, distribution = "gaussian",
+                     n.trees = 1000, shrinkage = shrinkage, cv.folds = 5)
+  
+  cv_error <- boost_model$cv.error[boost_model$n.trees]
+  
+  predictions <- predict(boost_model, newdata = merged_mod_train_nonbd, n.trees = 1000)
+  
+  train_mse <- mean((merged_mod_train_nonbd$price - predictions)^2)
+  
+  c(cv_error, train_mse)
+})
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+error_df <- data.frame(
+  Shrinkage = lambda,
+  cv_error = errors[1, ],
+  train_error = errors[2, ]
+)
+
+ggplot(data = error_df, aes(x = Shrinkage)) +
+  geom_line(aes(y = cv_error, color = "CV Error")) +
+  geom_line(aes(y = train_error, color = "Training Error")) +
+  scale_color_manual(values = c("CV Error" = "red", "Training Error" = "blue")) +
+  labs(x = "Shrinkage", y = "Error",
+       title = "Cross-validation and Training Error Against Shrinkage")
+
+```
+
+
+**Figure 6: Shrinkage Against CV and Train Error**
+
+We chose the shrinkage parameter, by plotting the CV and train error for values of the parameter between 0.01 and 0.5. We found what while the training error continues to decrease as the parameter increases, the CV error slowly increases. To try and minimise both, we chose a shrinkage parameter in the middle of the range we were looking at: 0.25. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+opt_param <- 0.25
+opt_boost <- gbm(price ~ ., data = merged_mod_train_nonbd, distribution = "gaussian",
+                         n.trees = 1000, shrinkage = opt_param, cv.folds = 5)
+
+rel.inf <- summary(opt_boost)$rel.inf
+var <- summary(opt_boost)$var
+influence_data <- data.frame(Variable = var, Relative_Influence = rel.inf)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+boost_imp <- ggplot(data = influence_data, aes(x = reorder(Variable, Relative_Influence), y = Relative_Influence)) +
+  geom_point() +
+  labs(x = "Variable", y = "Relative Influence", title = "Variable Importance Plot for Boosting") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+boost_imp
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+boost_predictions <- predict(opt_boost, newdata = merged_mod_test_nonbd)
+rmse_boost <- sqrt(mean((merged_mod_test_nonbd$price - boost_predictions)^2))
+```
+
+After fitting the bagging, random forst, and boosting models, we plotted their variable importance plots. 
+
+```{r fig.width=12}
+
+grid.arrange(boost_imp, rf_imp, bag_imp, nrow = 1)
+
+```
+
+
+**Figure 7: Variable Importance Plots for Bagging, Random Forest, and Boosting**
+
+The variable importance plots for the three different models are almost identical. The fact that they agree, gives us confidence that this is a good estimation of how important they actually are to the price of an AirBnB listing. Based off of the variable importance plot, we see that the four most important predictors are latitude, longitude, property type and the distance from downtown. The general idea we get from this, is hence that the location and property type of the listing are what impacts prices the most. In comparison, other neighbourhood characteristics like neighbourhood crime or income do not really appear to impact the price. This in general, appears to agree with a lot of the exploratory visualisations that we saw, where proximity to downtown generally appeared to be particularly important (e.g. the leaflet map displaying prices on the website). It also agrees with what we saw in figure 4, where the distribution of price did not really appear to change much with income and crime levels. 
+
+### 3.3.4. Comparison of All Predictive Models
+
+We now make a comparison of the predictive performance of all of the models that we fit (except the full linear regression one, since the reduced one was better). Particularly, we test them on their RMSEs on the test data. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+rmses <- c(lm.mod_stepaic_rmse, lmm.mod_rmse, tree_rmse, rmse_bag, rmse_rf, rmse_boost)
+
+models <- c("Linear Regression", "Linear Mixed Model", "Classification Tree", "Bagging", "Random Forest", "Gradient Boosting")
+
+comp_df <- data.frame(Model = models, rmse_vals = rmses)
+comp_df <- kable(comp_df, col.names = c("Model", "RMSE on Test Data"))
+kable_styling(comp_df, full_width = FALSE, 'striped')
+
+```
+
+
+**Table 7: Comparison of RMSEs of Fitted Models**
+
+Comparing RMSEs, we find that all of the models have rather similar errors, except for the classification tree, which performs almost two times worse than the others. In terms of the model that minimises the RMSE, gradient boosting performs the best. So at least on the basis of predictive power, that model would be preferred. In general though, all of the RMSEs but that of the classification tree are good, in the sense that they are both lower than the mean and median price values (see table 2). So they are relatively reasonable.
+
+In terms of which model provides the most insight into the relationship between the response and the predictors, it would have to be the the gradient boosting model (in fact, bagging and the random forest model do equally well in this regard). The reason that the linear regression model is not as great, is that although it gives very straightforward interpretations of the effects of each of the predictors, some of the coefficient results are counterintuitive - such as the fact that more neighbourhood crime appears to correlate with higher prices. This problem extends to the linear mixed model, which has the additional issue of having higher standard errors on each of the coefficient estimates, compared to that of the linear regression ones. In comparison, the variable importance plot of the gradient boosting model is not only intuitive in that it makes sense, it also agrees strongly with our exploratory visualisations. So since it is likely to be the most accurate. 
+
+# 4. Conclusion and Limitations
+
+The conclusion that we arrive at, is that although neighbourhoods do have a significant impact on the price (from the ANOVA model), it is questionable how much of an impact that income and crime levels of a neighbourhood have on price. This is not only seen in the visualisations, where any association appears to be weak, but also in the variable importance plots, where these covariates appear to have a weak impact on predicting price. On the other hand, proximity to downtown does matter. So we can say that the closer a neighbourhood is to downtown, the higher we would expect the prices to be. This is corroborated by the leaflet map displaying the results of the post-hoc Tukey test, showing that the "most different" neighbourhoods to others in price, happened to be closer to downtown in general.
+
+There are some limitations to our work though. For instance, we were only able to consider a limited subset of neighbourhood characteristics that could potentially have an impact on the price of a listing. For instance, one could think that walkability of a neighbourhood might be important to price - this was a word that showed up a lot in the neighbourhood description text wordclouds we constructed. We unfortunately did not have the data for this. 
+
+There are further limitations to our analysis. For instance, the median household income comes from the 2021 census (which is the most recent time we can find the relevant data), and yet the rest of our data is from 2023-24. This is an unavoidable issue with the scope of our project.
+
+
+
+
+# 5. References 
+  1. Get the Data. Inside Airbnb. (n.d.). http://insideairbnb.com/get-the-data/
+  2. Latitude.to. (n.d.). Latitude and longitude of Downtown Toronto. Latitude.to, maps, geolocated articles, latitude longitude coordinate conversion. https://latitude.to/articles-by-country/ca/canada/7404/downtown-toronto 
+  3. Major crime indicators open data. Toronto Police Service Public Safety Data Portal. (n.d.). [https://data.torontopolice.on.ca/datasets/TorontoPS::major-crime-indicators-open-data/about](https://data.torontopolice.on.ca/datasets/TorontoPS::major-crime-indicators-open-data/about) 
+  4. Open data dataset. City of Toronto Open Data Portal. (n.d.). https://open.toronto.ca/dataset/neighbourhood-profiles/ 
+
+Note: For posterity, much of the Final Report was adapted from my Midterm Report (as was mentioned that we could, from the pdf).

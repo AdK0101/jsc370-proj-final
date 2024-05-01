@@ -1,0 +1,547 @@
+---
+title: "Modelling"
+author: "Aditya Khan"
+output: 
+    html_document:
+        toc: TRUE
+        toc_float: TRUE
+---
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(ggplot2)
+library(leaflet)
+library(readxl)
+library(geosphere)
+library(knitr)
+library(kableExtra)
+library(tidytext)
+library(wordcloud)
+library(tm)
+library(RColorBrewer)  
+library(gridExtra)
+library(htmltools)
+library(cowplot)
+library(pastecs)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+library(xgboost)
+library(caret)
+#install.packages("car")
+library(car)
+library(faraway)
+library(lme4)
+library(nlme)
+library(lattice)
+library(mlmhelpr)
+library(plotly)
+library(widgetframe)
+library(nlme)
+library(googledrive)
+```
+
+
+**Important Note:** On this page, we briefly summarise the modelling process that we went through. We ommitted many details for brevity. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+abnb <- read.csv("data/feb 24.csv", na.strings = c("", NA))
+setDT(abnb)
+
+crime <- read.csv("data/Major_Crime_Indicators_Open_Data.csv")
+setDT(crime)
+
+nbd_profiles <- read_xlsx("data/neighbourhood-profiles-2021-158-model.xlsx")
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide'}
+
+false_x <- crime[crime$LONG_WGS84 == 0][1]$X
+false_y <- crime[crime$LONG_WGS84 == 0][1]$Y
+crime[] <- lapply(crime, function(x) gsub("NSA", NA, x))
+
+crime$LONG_WGS84[crime$LONG_WGS84 == 0] <- NA
+crime$LAT_WGS84[crime$LAT_WGS84 == 0] <- NA
+crime$X[crime$X == false_x] <- NA
+crime$Y[crime$Y == false_y] <- NA
+
+crime_sub <- crime[, c("OCC_YEAR", "OCC_MONTH", "OCC_DAY", "NEIGHBOURHOOD_158", "LONG_WGS84", "LAT_WGS84")]
+crime_sub <- na.omit(crime_sub)
+crime_sub$occ_month_int <- match(crime_sub$OCC_MONTH, month.name)
+crime_sub$DATE_OCC <- make_datetime(year = as.numeric(crime_sub$OCC_YEAR), month = crime_sub$occ_month_int, day = as.numeric(crime_sub$OCC_DAY))
+target_date <- as.Date("2024-02-14")
+crime_sub <- filter(crime_sub, DATE_OCC >= (target_date - 365), DATE_OCC <= target_date)
+crime_count <- crime_sub[, .(crime_count = .N), by = NEIGHBOURHOOD_158]
+crime_count$crime_count <- crime_count$crime_count / 365
+
+median_data <- subset(nbd_profiles, `Neighbourhood Name` == "Median total income of household in 2020 ($)")
+
+med_t <- t(median_data[-1])
+med_dt <- setDT(data.frame(nbd = rownames(med_t), nbd.med_hh = as.numeric(med_t)))
+
+abnb[] <- lapply(abnb, function(x) gsub("N/A", NA, x))
+convert_price_to_double <- function(price_char) {
+  price_double <- as.numeric(sub("\\$", "", price_char))
+  return(price_double)
+}
+
+abnb$price <- sapply(abnb$price, convert_price_to_double)
+abnb_sub <- abnb[, c("neighborhood_overview", "neighbourhood_cleansed", "latitude", "longitude", "property_type", "price")]
+abnb_sub$latitude <- as.numeric(abnb_sub$latitude)
+abnb_sub$longitude <- as.numeric(abnb_sub$longitude)
+
+abnb_sub <- abnb_sub[complete.cases(abnb_sub$price), ]
+abnb_sub <- abnb_sub[abnb_sub$price > 1]
+
+abnb_sub$property_type <- ifelse(grepl("^Entire", abnb_sub$property_type), "Entire property",
+                                 ifelse(grepl("^Private room", abnb_sub$property_type), "Private room",
+                                        ifelse(grepl("^Shared room", abnb_sub$property_type), "Shared room",
+                                               ifelse(grepl("^Room", abnb_sub$property_type), "Unspecified room", abnb_sub$property_type))))
+
+merged <- merge(
+  x     = abnb_sub,      
+  y     = crime_count, 
+  by.x  = c("neighbourhood_cleansed"),
+  by.y  = c("NEIGHBOURHOOD_158"), 
+  all.x = FALSE,      
+  all.y = FALSE
+)
+
+merged <- merge(
+  x     = merged,      
+  y     = med_dt, 
+  by.x  = c("neighbourhood_cleansed"),
+  by.y  = c("nbd"), 
+  all.x = FALSE,      
+  all.y = FALSE
+)
+
+new <- c("nbd", "nbd_desc", "lat", "lon", "property_type", "price", "nbd.crime_count", "nbd.med_hh")
+old <- colnames(merged)
+setnames(merged, old, new)
+
+downtown_coords <- c(43.6515, -79.3835)
+merged$distance_from_downtown <- distHaversine(downtown_coords, merged[, c("lat", "lon")]) / 1000 
+
+merged$nbd.med_hh_scaled <- merged$nbd.med_hh / 100
+
+merged$property_type <- as.factor(merged$property_type)
+merged$nbd <- as.factor(merged$nbd)
+
+property_table <- table(merged$property_type)
+
+remove_type <- c("Boat", "Camper/RV", "Casa particular", "Castle", "Tiny home", "Treehouse", "Unspecified room")
+
+merged <- merged[!(property_type %in% remove_type)]
+
+merged <- merged[, -c("nbd.med_hh")]
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+prices <- merged$price
+p.q <- quantile(prices, na.rm = TRUE)
+merged$price_level <- ifelse(prices >=  0 & prices <= p.q[2], "low",
+                                ifelse(prices > p.q[2] & prices <= p.q[4], "medium",
+                                       ifelse(prices > p.q[4], "high", NA)))
+
+
+incomes <- merged$nbd.med_hh_scaled
+hh.q <- quantile(incomes, na.rm = TRUE)
+merged$income_level <- ifelse(incomes >=  0 & incomes <= hh.q[2], "low",
+                              ifelse(incomes > hh.q[2] & incomes <= hh.q[4], "medium",
+                                     ifelse(incomes > hh.q[4], "high", NA)))
+
+cc <- merged$nbd.crime_count
+cc.q <- quantile(cc, na.rm = TRUE)
+merged$cc_level <- ifelse(cc >=  0 & cc <= cc.q[2], "low",
+                          ifelse(cc > cc.q[2] & cc <= cc.q[4], "medium",
+                                 ifelse(cc > cc.q[4], "high", NA)))
+
+merged$income_level <- as.factor(merged$income_level)
+merged$cc_level <- as.factor(merged$cc_level)
+
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# I take inspiration from my HW1 code here. 
+
+merged.nbd_summary <- merged[, .(
+  lon = mean(lon, na.rm = TRUE),
+  lat = mean(lat, na.rm = TRUE),
+  price = round(mean(price, na.rm = TRUE))
+), by = c("nbd")]
+
+```
+
+# Mean Model (Non-Predictive Purposes)
+
+The first model that we fit was a mean model, with price as the response, and neighbourhood as the "treatment". We found that at least one neighbourhood had a signficantly different mean price than the others. 
+
+Beyond confirming this, we futher conducted a post-hoc Tukey HSD test. From this, we found that only about 6% of the pairwise neighbourhood comparisons in the test were significant. We count the number of times a given neighbourhood was involved in a significant comparison. This gives a rough measure of how different a given neighbourhood is, compared to any other neighbourhood in Toronto. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+unique_nbds <- as.character(unique(merged$nbd))
+nbds_df <- data.frame(nbd = unique_nbds, index = seq_along(unique_nbds))
+nbds_df$nbddotted <- gsub("-", ".", nbds_df$nbd)
+merged$nbddotted <- gsub("-", ".", merged$nbd)
+
+anova.res <- aov(price ~ nbddotted, data = merged)
+tukey_result <- TukeyHSD(anova.res)
+
+tukey_df <- as.data.frame(tukey_result$nbd)
+tukey_df$Comparison <- rownames(tukey_df)
+rownames(tukey_df) <- NULL
+tukey_df <- tukey_df[, c("Comparison", "diff", "lwr", "upr", "p adj")]
+
+tukey_df$p.adj <- tukey_df$`p adj`
+setDT(tukey_df)
+
+sig.comparisons.tukey <- tukey_df[p.adj < 0.05]
+
+all_nbds <- unlist(strsplit(sig.comparisons.tukey$Comparison, "-"))
+
+nbd_counts <- table(all_nbds)
+
+nbd_difference <- as.data.frame(nbd_counts)
+nbd_difference <- nbd_difference[order(-nbd_difference$Freq), ]
+
+merged.nbd_df <- merge(
+  x     = nbds_df,      
+  y     = nbd_difference, 
+  by.x  = c("nbddotted"),
+  by.y  = c("all_nbds"), 
+  all.x = TRUE,      
+  all.y = FALSE
+)
+merged.nbd_df <- merge(
+  x     = merged.nbd_df,      
+  y     = merged.nbd_summary, 
+  by.x  = c("nbd"),
+  by.y  = c("nbd"), 
+  all.x = FALSE,      
+  all.y = FALSE
+)
+merged.nbd_df$Freq[is.na(merged.nbd_df$Freq)] <- 0
+
+downtown_coords <- data.frame(lon = -79.3835, lat = 43.6515)
+
+palette_low <- brewer.pal(9, "Blues")[4:9]
+
+label_html <- lapply(merged.nbd_df$nbd, function(nbd) {
+  HTML(paste("Neighborhood: ", nbd))
+})
+palette <- colorNumeric(palette = palette_low, domain = merged.nbd_df$Freq)
+
+leaflet(merged.nbd_df) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~lon, 
+    ~lat,
+    color = ~palette(Freq),
+    popup = ~as.character(merged.nbd_df$nbd),
+    label = label_html,
+    radius = 8,
+    opacity = 0.5, 
+    fillOpacity = 1) %>%
+  addLabelOnlyMarkers(
+    ~lon, ~lat,
+    label = ~as.character(merged.nbd_df$Freq),  
+    labelOptions = labelOptions(
+      noHide = TRUE,  
+      textOnly = TRUE,  
+      direction = "center",
+      style = list(color = "white")
+    )
+  ) %>% 
+  addCircleMarkers(
+    data = downtown_coords,
+    downtown_coords$lon, 
+    downtown_coords$lat,
+    color = "Purple",
+    popup = ~as.character("DT"),
+    label = "DT",
+    radius = 8,
+    opacity = 0.5, 
+    fillOpacity = 1) %>%
+  addLabelOnlyMarkers(
+    downtown_coords$lon, downtown_coords$lat,
+    label = ~as.character("DT"),  
+    labelOptions = labelOptions(
+      noHide = TRUE,  
+      textOnly = TRUE,  
+      direction = "center",
+      style = list(color = "white")
+    )
+  ) |>
+  addLegend('bottomleft', 
+            pal = palette, 
+            values = merged.nbd_df$Freq, 
+            title = "Num. Sig. Diff.")
+
+```
+
+#### Figure 8: Map of Toronto Neighbourhoods with Number of Significant Comparisons In Tukey Test
+
+We find that the neighbourhood "most different" from other neighbourhoods is Forest Hill South. It had 53 signficant comparisons in the Tukey Test. An interesting observation is that the majority of the "most different" neighbourhoods are close to downtown. To there appears to be some impact of proximity to downtown, on the price of a listing, at least on a neighbourhood level. 
+
+# Fitting Predictive Models 
+
+Following this, we proceeded to fit a number of different models, not just for the purpose of examining the relationship between the response and covariates, but also for the purpose of predicting price. This involved fitting the models on a training set (70%) and evaluating on a test set  (30%). 
+
+In particular, we fit six different candidate models:
+  - Linear Regression
+  - Linear Mixed Model (with a random slope given to neighbourhood crime and income)
+  - Decision Tree
+  - Bagging Model
+  - Random Forest
+  - Gradient Boosting Model
+
+The full details of the fit are found in the report. However, some important details are below. 
+
+## Variable Importance Plots {.tabset}
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+near.rest <- ifelse(grepl("restaurant|restaurants", tolower(merged$nbd_desc)), 1, 0)
+merged$near.rest <- near.rest
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+near.shop <- ifelse(grepl("shop|shops|shopping", tolower(merged$nbd_desc)), 1, 0)
+merged$near.shop <- near.shop
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+near.park <- ifelse(grepl("park", tolower(merged$nbd_desc)), 1, 0)
+merged$near.park <- near.park
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+merged_mod <- merged[, -c("nbd_desc", "price_level", "income_level", "cc_level", "nbddotted")]
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+set.seed(69420)
+train<-sample(1:nrow(merged_mod), round(0.7*nrow(merged_mod)))
+merged_mod_train<-merged_mod[train,]
+merged_mod_test<-merged_mod[-train,]
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+merged_mod_train_nonbd <- merged_mod_train[, -c("nbd")]
+merged_mod_test_nonbd <- merged_mod_test[, -c("nbd")]
+lm.mod_full <- lm(price ~ ., data = merged_mod_train_nonbd)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+sel.var.aic <- step(lm.mod_full, trace = 0, k = 2, direction = "both") 
+select_var_aic<-attr(terms(sel.var.aic), "term.labels") # Extract the variables selected  
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+lm.mod_stepaic <- lm(price ~ lat + lon + property_type + nbd.crime_count + distance_from_downtown + nbd.med_hh_scaled, data = merged_mod_train_nonbd)
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+lm.mod_full_pred<-predict(lm.mod_full, merged_mod_test_nonbd)
+lm.mod_stepaic_pred<-predict(lm.mod_stepaic, merged_mod_test_nonbd)
+lm.mod_full_rmse <- sqrt(mean((merged_mod_test_nonbd$price - lm.mod_full_pred)^2))
+lm.mod_stepaic_rmse <- sqrt(mean((merged_mod_test_nonbd$price - lm.mod_stepaic_pred)^2))
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+nlme.mod <- lme(price ~ lat + lon + property_type + nbd.crime_count + distance_from_downtown + nbd.med_hh_scaled + near.rest + near.shop + near.park, 
+                random = ~1 + nbd.crime_count + nbd.med_hh_scaled | nbd, 
+                data = merged_mod_train)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+lmm.mod_pred<-predict(nlme.mod, merged_mod_test)
+lmm.mod_rmse <- sqrt(mean((merged_mod_test$price - lmm.mod_pred)^2))
+
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+tree <- rpart(
+  price ~ .,
+  method = "class",
+  data = merged_mod_train_nonbd,
+  minsplit = 10,
+  minbucket = 3,
+  cp = 0,
+  xval = 10
+)
+
+optimalcp = tree$cptable[which.min(tree$cptable[, 'xerror']), "CP"]
+
+tree_prune<-prune(tree, cp = optimalcp)
+tree_pred<-predict(tree_prune, merged_mod_test_nonbd)
+
+tree_rmse <- sqrt(mean((merged_mod_test_nonbd$price - tree_pred)^2))
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+bag<-randomForest(
+  price ~ .,
+  data = merged_mod_train_nonbd,
+  mtry = ncol(merged_mod_train_nonbd)-1,
+  na.action = na.omit
+)
+bag_predictions <- predict(bag, newdata = merged_mod_test_nonbd)
+bag_importance <- importance(bag)
+bag_importance <- data.frame(
+  Variable = rownames(bag_importance), 
+  Importance = bag_importance
+)
+setDT(bag_importance)
+
+bag_imp <- ggplot(data = bag_importance, aes(x = reorder(Variable, IncNodePurity), y = IncNodePurity)) +
+  geom_point() +
+  labs(x = "Variable", y = "Increase in Node Purity", title = "Variable Importance For Bagging") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+rmse_bag <- sqrt(mean((merged_mod_test_nonbd$price - bag_predictions)^2))
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+rf<-randomForest(
+  price ~ .,
+  data = merged_mod_train_nonbd,
+  na.action = na.omit
+)
+rf_predictions <- predict(rf, newdata = merged_mod_test_nonbd)
+
+rf_importance <- importance(rf)
+rf_importance <- data.frame(
+  Variable = rownames(rf_importance), 
+  Importance = rf_importance
+)
+
+rf_imp <- ggplot(data = rf_importance, aes(x = reorder(Variable, IncNodePurity), y = IncNodePurity)) +
+  geom_point() +
+  labs(x = "Variable", y = "Increase in Node Purity", title = "Variable Importance for RF") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+rf_predictions <- predict(rf, newdata = merged_mod_test_nonbd)
+rmse_rf <- sqrt(mean((merged_mod_test_nonbd$price - rf_predictions)^2))
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+lambda <- seq(0.01, 0.5, by = 0.05)
+
+errors <- sapply(lambda, function(shrinkage) {
+  boost_model <- gbm(price ~ ., data = merged_mod_train_nonbd, distribution = "gaussian",
+                     n.trees = 1000, shrinkage = shrinkage, cv.folds = 5)
+  
+  cv_error <- boost_model$cv.error[boost_model$n.trees]
+  
+  predictions <- predict(boost_model, newdata = merged_mod_train_nonbd, n.trees = 1000)
+  
+  train_mse <- mean((merged_mod_train_nonbd$price - predictions)^2)
+  
+  c(cv_error, train_mse)
+})
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+opt_param <- 0.25
+opt_boost <- gbm(price ~ ., data = merged_mod_train_nonbd, distribution = "gaussian",
+                         n.trees = 1000, shrinkage = opt_param, cv.folds = 5)
+
+rel.inf <- summary(opt_boost)$rel.inf
+var <- summary(opt_boost)$var
+influence_data <- data.frame(Variable = var, Relative_Influence = rel.inf)
+```
+
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+boost_imp <- ggplot(data = influence_data, aes(x = reorder(Variable, Relative_Influence), y = Relative_Influence)) +
+  geom_point() +
+  labs(x = "Variable", y = "Relative Influence", title = "Variable Importance Plot for Boosting") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE, results='hide', fig.show='hide'}
+
+boost_predictions <- predict(opt_boost, newdata = merged_mod_test_nonbd)
+rmse_boost <- sqrt(mean((merged_mod_test_nonbd$price - boost_predictions)^2))
+```
+
+
+### Bagging
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+ggplotly(bag_imp)
+
+```
+
+
+### Random Forest
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+ggplotly(rf_imp)
+
+```
+
+
+### Boosting
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+ggplotly(boost_imp)
+```
+
+## {-}
+
+**Figure 9: Variable Importance Plots For Bagging, Random Forest, and Boosting**
+
+
+For three models, we were able to obtain variable importance plots. We plot them above. 
+
+The variable importance plots for the three different models are almost identical. The fact that they agree, gives us confidence that this is a good estimation of how important they actually are to the price of an AirBnB listing. Based off of the variable importance plot, we see that the four most important predictors are latitude, longitude, property type and the distance from downtown. The general idea we get from this, is hence that the location and property type of the listing are what impacts prices the most. In comparison, other neighbourhood characteristics like neighbourhood crime or income do not really appear to impact the price. This in general, appears to agree with a lot of the exploratory visualisations that we saw, where proximity to downtown generally appeared to be particularly important (e.g. the leaflet map displaying prices on the website). It also agrees with what we saw in figure 4, where the distribution of price did not really appear to change much with income and crime levels. 
+
+
+Finally, we can describe the RMSEs for all of the models in a table below. 
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+
+rmses <- c(lm.mod_stepaic_rmse, lmm.mod_rmse, tree_rmse, rmse_bag, rmse_rf, rmse_boost)
+
+models <- c("Linear Regression", "Linear Mixed Model", "Classification Tree", "Bagging", "Random Forest", "Gradient Boosting")
+
+comp_df <- data.frame(Model = models, rmse_vals = rmses)
+comp_df <- kable(comp_df, col.names = c("Model", "RMSE on Test Data"))
+kable_styling(comp_df, full_width = FALSE, 'striped')
+
+```
+
+
+Comparing RMSEs, we find that all of the models have rather similar errors, except for the classification tree, which performs almost two times worse than the others. In terms of the model that minimises the RMSE, gradient boosting performs the best. So at least on the basis of predictive power, that model would be preferred. In general though, all of the RMSEs but that of the classification tree are good, in the sense that they are both lower than the mean and median price values (see table 2 in report). So they are relatively reasonable.

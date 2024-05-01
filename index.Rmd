@@ -1,0 +1,56 @@
+---
+title: "JSC370 Final Project"
+author: "Aditya Khan"
+output: 
+    html_document:
+        toc: TRUE
+        toc_float: TRUE
+---
+
+
+# Background and Motivation
+When trying to analyse how pricing works in the rental market, the immediate factors behind listing price that immediately come to mind are related to characteristics of the property itself. The intuition would be that other factors like the characteristics of the neighbourhood the listing is in probably would not be as important. The reason being that consumers are less likely to have a strong understanding of characteristics of neighbourhoods if they are travelling. Hence in theory, renters are not required to adjust their price (to a great degree) for the characteristics of the neighbourhood the property is in. This would be in stark contrast to the housing market.
+
+Our objective is to test this theory: to what extent does the characteristics of the neighbourhood actually impact the price of a rental listing? We choose to restrict our setting to AirBnBs and specifically those in Toronto. AirBnBs are chosen because the data is easily obtainable online. Toronto is chosen as the city, due to the fact that it has a good mix of both affluent neighbourhoods (e.g. Trinity Bellwoods), and less affluent ones. 
+
+We choose the neighbourhood characteristics we study according to the following heuristic: what neighbourhood characteristics could potentially impact prices? First, we consider the safety of the neighbourhood. Secondly we consider the median household income of the neighbourhood. Thirdly, we consider the proximity of the place to downtown. The last is important to consider, because proximity to downtown is an indicator for things like quick access to amenities (downtown has a high concentration of shops) and access to luxuries. 
+
+With that said, there is clear confounders that we need to adjust for: namely the property type. Different property types would generally fetch different prices. 
+
+# Research Question and Objective
+
+In light of the above discussion, our specific research question is hence: to what extent is there an association between price of an AirBnB listing in Toronto, and 1) the safety of the neighbourhood the listing is in, 2) the median household income of the neighbourhood, and 3) proximity to downtown? Does this association (if it exists) differ by property type?
+
+The broader objective though, is to test the theory that we propose above. Note that as we look the data further, our exploration may inform the addition of further covariates to any model we fit, to answer our research question above. 
+
+# Access The Full Report and Video Presentation
+
+Find the full report [here](---
+title: "JSC370 Final Project"
+author: "Aditya Khan"
+output: 
+    html_document:
+        toc: TRUE
+        toc_float: TRUE
+---
+
+
+# Background and Motivation
+When trying to analyse how pricing works in the rental market, the immediate factors behind listing price that immediately come to mind are related to characteristics of the property itself. The intuition would be that other factors like the characteristics of the neighbourhood the listing is in probably would not be as important. The reason being that consumers are less likely to have a strong understanding of characteristics of neighbourhoods if they are travelling. Hence in theory, renters are not required to adjust their price (to a great degree) for the characteristics of the neighbourhood the property is in. This would be in stark contrast to the housing market.
+
+Our objective is to test this theory: to what extent does the characteristics of the neighbourhood actually impact the price of a rental listing? We choose to restrict our setting to AirBnBs and specifically those in Toronto. AirBnBs are chosen because the data is easily obtainable online. Toronto is chosen as the city, due to the fact that it has a good mix of both affluent neighbourhoods (e.g. Trinity Bellwoods), and less affluent ones. 
+
+We choose the neighbourhood characteristics we study according to the following heuristic: what neighbourhood characteristics could potentially impact prices? First, we consider the safety of the neighbourhood. Secondly we consider the median household income of the neighbourhood. Thirdly, we consider the proximity of the place to downtown. The last is important to consider, because proximity to downtown is an indicator for things like quick access to amenities (downtown has a high concentration of shops) and access to luxuries. 
+
+With that said, there is clear confounders that we need to adjust for: namely the property type. Different property types would generally fetch different prices. 
+
+# Research Question and Objective
+
+In light of the above discussion, our specific research question is hence: to what extent is there an association between price of an AirBnB listing in Toronto, and 1) the safety of the neighbourhood the listing is in, 2) the median household income of the neighbourhood, and 3) proximity to downtown? Does this association (if it exists) differ by property type?
+
+The broader objective though, is to test the theory that we propose above. Note that as we look the data further, our exploration may inform the addition of further covariates to any model we fit, to answer our research question above. 
+
+
+**Find the full report** [here](https://github.com/AdK0101/jsc370-proj-final/blob/master/Report.pdf)
+
+**Find the video presentation** [here](https://drive.google.com/file/d/1Rs62dbCWRRxjK8-6B4B6WjDVCpJ5PjFV/view?usp=sharing)
